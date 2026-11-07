@@ -39,9 +39,9 @@ editing the transcript. Free, no account, and everything stays on your Mac.
   Mistral's Voxtral with your own API key, for better words and speaker names.
 - ⬇️ **Download the edit** as a new `.mp4`. The original stays as it was.
 
-![The Bubble editor: the recording transcribes on its own, two cuts, a slow part at 1.5×, then Download](media/editor.webp)
+[![The Bubble editor on the Pulse walkthrough: it transcribes on its own, a stumble cut, a slow sentence at 1.5×, then Download](media/editor.webp)](media/editor.mp4)
 
-<sub>The editor, on a test recording. [Watch it as mp4](media/editor.mp4).</sub>
+<sub>The editor, on the Pulse walkthrough above: it transcribes on its own, a stumble cut, a slow sentence at 1.5×, then Download. [Watch it as mp4](media/editor.mp4).</sub>
 
 ## Shortcuts
 
