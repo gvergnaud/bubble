@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bubble editor</title>
+<link rel="stylesheet" href="/editor/editor.css">
+<script type="module" src="/editor/app.js"></script>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand" title="Bubble">
+      <svg viewBox="0 0 17 17" aria-hidden="true"><circle cx="10" cy="7" r="6.75" fill="currentColor"/><circle cx="3.5" cy="13.5" r="4.25" fill="var(--bg)"/><circle cx="3.5" cy="13.5" r="2.75" fill="currentColor"/></svg>
+      Bubble
+    </div>
+    <div class="sep"></div>
+    <div class="title" id="title" contenteditable="plaintext-only" spellcheck="false" title="Rename">Loading…</div>
+    <div class="spacer"></div>
+    <div class="status" id="status"></div>
+    <button class="icon-btn" id="undo" title="Undo ⌘Z" disabled>
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4.5 3.5 8 7 11.5"/><path d="M3.5 8h8a4.5 4.5 0 0 1 0 9H9"/></svg>
+    </button>
+    <button class="icon-btn" id="redo" title="Redo ⇧⌘Z" disabled>
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4.5 16.5 8 13 11.5"/><path d="M16.5 8h-8a4.5 4.5 0 0 0 0 9H11"/></svg>
+    </button>
+    <button class="btn primary" id="download" title="Download the edited video">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10"/><path d="m5.5 8.5 4.5 4.5 4.5-4.5"/><path d="M4 16.5h12"/></svg>
+      <span>Download</span>
+    </button>
+  </header>
+
+  <div class="main">
+    <section class="player">
+      <video id="video" playsinline preload="auto"></video>
+      <div class="controls">
+        <button class="icon-btn" id="play" title="Play  Space"></button>
+        <div class="time" id="time">0:00 / 0:00</div>
+        <div class="spacer"></div>
+        <button class="rate-btn" id="viewRate" title="Playback speed (viewing only)">1×</button>
+        <button class="icon-btn" id="fullscreen" title="Full screen">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 7.5v-4h4M16.5 7.5v-4h-4M3.5 12.5v4h4M16.5 12.5v4h-4"/></svg>
+        </button>
+      </div>
+    </section>
+    <aside class="side">
+      <div class="side-head">
+        <span class="side-title">Transcript</span>
+        <span class="side-sub" id="engineName"></span>
+        <div class="spacer"></div>
+        <button class="icon-btn" id="tmenu" title="Transcript options" hidden>
+          <svg viewBox="0 0 20 20" fill="currentColor"><circle cx="5" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="15" cy="10" r="1.5"/></svg>
+        </button>
+      </div>
+      <div class="transcript" id="transcript"></div>
+    </aside>
+  </div>
+
+  <section class="timeline">
+    <div class="tbar">
+      <span class="selinfo" id="selinfo"></span>
+      <div id="actions" style="display:contents"></div>
+      <div class="spacer"></div>
+      <div class="zoom">
+        <button class="icon-btn" id="zoomOut" title="Zoom out ⌘−"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="6.5"/><path d="M7 10h6"/></svg></button>
+        <button class="fit on" id="zoomFit" title="Fit the whole recording">Fit</button>
+        <button class="icon-btn" id="zoomIn" title="Zoom in ⌘+"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="6.5"/><path d="M7 10h6M10 7v6"/></svg></button>
+      </div>
+    </div>
+    <div class="track-wrap"><canvas id="track" tabindex="0" aria-label="Timeline"></canvas></div>
+  </section>
+</div>
+</body>
+</html>

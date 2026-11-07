@@ -1,0 +1,72 @@
+{
+  "about": "Golden cases for the edit model (docs/editor-api.md §3). Owner: QA. Expectations come from the spec, not from an implementation. Run by node --test web/test/edits-cases.test.mjs (the page's model.js) and by Tests/BubbleEditorTests (EditPlan). Times in seconds of source time; compare with a 1e-6 tolerance.",
+  "duration": 68.638,
+  "validate": [
+    { "name": "empty", "segments": [], "valid": true },
+    { "name": "the fixture's edits", "segments": [{ "start": 8.025, "end": 8.221, "rate": 0 }, { "start": 16.913, "end": 19.76, "rate": 0 }, { "start": 43.05, "end": 52.067, "rate": 1.5 }], "valid": true },
+    { "name": "a cut at 0", "segments": [{ "start": 0, "end": 1, "rate": 0 }], "valid": true },
+    { "name": "the whole video sped up", "segments": [{ "start": 0, "end": 68.638, "rate": 2 }], "valid": true },
+    { "name": "touching, different rates", "segments": [{ "start": 1, "end": 2, "rate": 0 }, { "start": 2, "end": 3, "rate": 1.5 }], "valid": true },
+    { "name": "rate bounds 0.25 and 4", "segments": [{ "start": 1, "end": 2, "rate": 0.25 }, { "start": 3, "end": 4, "rate": 4 }], "valid": true },
+    { "name": "exactly one frame long", "segments": [{ "start": 1, "end": 1.0333334, "rate": 0 }], "valid": true },
+    { "name": "out of order", "segments": [{ "start": 3, "end": 4, "rate": 0 }, { "start": 1, "end": 2, "rate": 0 }], "valid": false },
+    { "name": "overlapping", "segments": [{ "start": 1, "end": 3, "rate": 0 }, { "start": 2, "end": 4, "rate": 1.5 }], "valid": false },
+    { "name": "negative start", "segments": [{ "start": -0.5, "end": 1, "rate": 0 }], "valid": false },
+    { "name": "past the end", "segments": [{ "start": 68, "end": 69, "rate": 0 }], "valid": false },
+    { "name": "empty range", "segments": [{ "start": 2, "end": 2, "rate": 0 }], "valid": false },
+    { "name": "reversed range", "segments": [{ "start": 3, "end": 2, "rate": 0 }], "valid": false },
+    { "name": "rate 1 is not a segment", "segments": [{ "start": 1, "end": 2, "rate": 1 }], "valid": false },
+    { "name": "rate below 0.25", "segments": [{ "start": 1, "end": 2, "rate": 0.2 }], "valid": false },
+    { "name": "rate above 4", "segments": [{ "start": 1, "end": 2, "rate": 5 }], "valid": false },
+    { "name": "negative rate", "segments": [{ "start": 1, "end": 2, "rate": -1 }], "valid": false },
+    { "name": "shorter than a frame", "segments": [{ "start": 1, "end": 1.02, "rate": 0 }], "valid": false },
+    { "name": "start is a string", "segments": [{ "start": "1", "end": 2, "rate": 0 }], "valid": false },
+    { "name": "missing rate", "segments": [{ "start": 1, "end": 2 }], "valid": false },
+    { "name": "segments is not an array", "segments": { "start": 1, "end": 2, "rate": 0 }, "valid": false }
+  ],
+  "apply": [
+    { "name": "delete", "from": [], "ops": [{ "start": 2, "end": 5, "rate": 0 }], "expect": [{ "start": 2, "end": 5, "rate": 0 }] },
+    { "name": "delete then restore", "from": [], "ops": [{ "start": 2, "end": 5, "rate": 0 }, { "start": 2, "end": 5, "rate": 1 }], "expect": [] },
+    { "name": "a cut inside a speed range splits it", "from": [], "ops": [{ "start": 0, "end": 10, "rate": 1.5 }, { "start": 4, "end": 6, "rate": 0 }],
+      "expect": [{ "start": 0, "end": 4, "rate": 1.5 }, { "start": 4, "end": 6, "rate": 0 }, { "start": 6, "end": 10, "rate": 1.5 }] },
+    { "name": "speed never un-cuts", "from": [], "ops": [{ "start": 4, "end": 6, "rate": 0 }, { "start": 0, "end": 10, "rate": 2 }],
+      "expect": [{ "start": 0, "end": 4, "rate": 2 }, { "start": 4, "end": 6, "rate": 0 }, { "start": 6, "end": 10, "rate": 2 }] },
+    { "name": "restore clears cuts and speeds", "from": [{ "start": 0, "end": 4, "rate": 2 }, { "start": 4, "end": 6, "rate": 0 }, { "start": 6, "end": 10, "rate": 2 }],
+      "ops": [{ "start": 0, "end": 10, "rate": 1 }], "expect": [] },
+    { "name": "delete overwrites a speed", "from": [], "ops": [{ "start": 0, "end": 10, "rate": 2 }, { "start": 0, "end": 10, "rate": 0 }], "expect": [{ "start": 0, "end": 10, "rate": 0 }] },
+    { "name": "a newer speed replaces an older one", "from": [], "ops": [{ "start": 0, "end": 10, "rate": 1.5 }, { "start": 5, "end": 15, "rate": 2 }],
+      "expect": [{ "start": 0, "end": 5, "rate": 1.5 }, { "start": 5, "end": 15, "rate": 2 }] },
+    { "name": "touching cuts merge", "from": [], "ops": [{ "start": 1, "end": 2, "rate": 0 }, { "start": 2, "end": 3, "rate": 0 }], "expect": [{ "start": 1, "end": 3, "rate": 0 }] },
+    { "name": "restore the middle of a cut", "from": [], "ops": [{ "start": 1, "end": 5, "rate": 0 }, { "start": 2, "end": 3, "rate": 1 }],
+      "expect": [{ "start": 1, "end": 2, "rate": 0 }, { "start": 3, "end": 5, "rate": 0 }] },
+    { "name": "a sub-frame leftover is dropped", "from": [], "ops": [{ "start": 1, "end": 5, "rate": 0 }, { "start": 1.01, "end": 5, "rate": 1 }], "expect": [] },
+    { "name": "speed over half a cut keeps the cut", "from": [], "ops": [{ "start": 4, "end": 6, "rate": 0 }, { "start": 5, "end": 10, "rate": 2 }],
+      "expect": [{ "start": 4, "end": 6, "rate": 0 }, { "start": 6, "end": 10, "rate": 2 }] },
+    { "name": "same speed twice merges", "from": [], "ops": [{ "start": 1, "end": 3, "rate": 1.5 }, { "start": 3, "end": 6, "rate": 1.5 }], "expect": [{ "start": 1, "end": 6, "rate": 1.5 }] },
+    { "name": "an empty range changes nothing", "from": [{ "start": 1, "end": 2, "rate": 0 }], "ops": [{ "start": 3, "end": 3, "rate": 0 }], "expect": [{ "start": 1, "end": 2, "rate": 0 }] }
+  ],
+  "pieces": [
+    { "name": "no edits", "segments": [], "pieces": [{ "start": 0, "end": 68.638, "rate": 1 }], "outputDuration": 68.638 },
+    { "name": "the fixture's edits", "segments": [{ "start": 8.025, "end": 8.221, "rate": 0 }, { "start": 16.913, "end": 19.76, "rate": 0 }, { "start": 43.05, "end": 52.067, "rate": 1.5 }],
+      "pieces": [{ "start": 0, "end": 8.025, "rate": 1 }, { "start": 8.221, "end": 16.913, "rate": 1 }, { "start": 19.76, "end": 43.05, "rate": 1 }, { "start": 43.05, "end": 52.067, "rate": 1.5 }, { "start": 52.067, "end": 68.638, "rate": 1 }],
+      "outputDuration": 62.589333333 },
+    { "name": "everything cut", "segments": [{ "start": 0, "end": 68.638, "rate": 0 }], "pieces": [], "outputDuration": 0 },
+    { "name": "the whole video at 2x", "segments": [{ "start": 0, "end": 68.638, "rate": 2 }], "pieces": [{ "start": 0, "end": 68.638, "rate": 2 }], "outputDuration": 34.319 },
+    { "name": "cuts at both ends", "segments": [{ "start": 0, "end": 1, "rate": 0 }, { "start": 67.638, "end": 68.638, "rate": 0 }], "pieces": [{ "start": 1, "end": 67.638, "rate": 1 }], "outputDuration": 66.638 },
+    { "name": "fast then slow, touching", "segments": [{ "start": 10, "end": 20, "rate": 2 }, { "start": 20, "end": 30, "rate": 0.5 }],
+      "pieces": [{ "start": 0, "end": 10, "rate": 1 }, { "start": 10, "end": 20, "rate": 2 }, { "start": 20, "end": 30, "rate": 0.5 }, { "start": 30, "end": 68.638, "rate": 1 }],
+      "outputDuration": 73.638 }
+  ],
+  "timeMap": {
+    "about": "source time → edited (played) time, with the fixture's edits. A time inside a cut maps to the cut's start.",
+    "segments": [{ "start": 8.025, "end": 8.221, "rate": 0 }, { "start": 16.913, "end": 19.76, "rate": 0 }, { "start": 43.05, "end": 52.067, "rate": 1.5 }],
+    "points": [
+      { "source": 0, "edited": 0 },
+      { "source": 8.1, "edited": 8.025 },
+      { "source": 10, "edited": 9.804 },
+      { "source": 18, "edited": 16.717 },
+      { "source": 50, "edited": 44.640333333 },
+      { "source": 68.638, "edited": 62.589333333 }
+    ]
+  }
+}

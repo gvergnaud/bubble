@@ -1,0 +1,1364 @@
+{
+ "id": "demo",
+ "title": "Bubble demo",
+ "createdAt": "2026-11-06T14:22:05Z",
+ "updatedAt": "2026-11-06T14:40:00Z",
+ "video": {
+  "url": "/media/demo/source",
+  "duration": 68.638,
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "posterUrl": "/media/demo/poster.jpg"
+ },
+ "waveform": {
+  "url": "/api/projects/demo/waveform"
+ },
+ "transcript": {
+  "status": "ready",
+  "progress": 1,
+  "engine": "fixture",
+  "language": "en",
+  "speakers": [
+   {
+    "id": "S1",
+    "name": "Gabriel"
+   },
+   {
+    "id": "S2",
+    "name": "Speaker 2"
+   }
+  ],
+  "words": [
+   {
+    "start": 0.68,
+    "end": 0.898,
+    "text": "Hey",
+    "speaker": "S1"
+   },
+   {
+    "start": 0.922,
+    "end": 1.468,
+    "text": "everybody,",
+    "speaker": "S1"
+   },
+   {
+    "start": 1.528,
+    "end": 1.692,
+    "text": "uh,",
+    "speaker": "S1",
+    "filler": true
+   },
+   {
+    "start": 1.71,
+    "end": 1.928,
+    "text": "I'm",
+    "speaker": "S1"
+   },
+   {
+    "start": 1.953,
+    "end": 2.389,
+    "text": "Gabriel,",
+    "speaker": "S1"
+   },
+   {
+    "start": 2.438,
+    "end": 2.656,
+    "text": "and",
+    "speaker": "S1"
+   },
+   {
+    "start": 2.68,
+    "end": 2.953,
+    "text": "this",
+    "speaker": "S1"
+   },
+   {
+    "start": 2.983,
+    "end": 3.147,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 3.165,
+    "end": 3.329,
+    "text": "a",
+    "speaker": "S1"
+   },
+   {
+    "start": 3.347,
+    "end": 3.674,
+    "text": "quick",
+    "speaker": "S1"
+   },
+   {
+    "start": 3.71,
+    "end": 3.983,
+    "text": "demo",
+    "speaker": "S1"
+   },
+   {
+    "start": 4.013,
+    "end": 4.177,
+    "text": "of",
+    "speaker": "S1"
+   },
+   {
+    "start": 4.195,
+    "end": 4.577,
+    "text": "Bubble.",
+    "speaker": "S1"
+   },
+   {
+    "start": 5.149,
+    "end": 5.514,
+    "text": "Bubble",
+    "speaker": "S1"
+   },
+   {
+    "start": 5.555,
+    "end": 5.711,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 5.729,
+    "end": 5.885,
+    "text": "a",
+    "speaker": "S1"
+   },
+   {
+    "start": 5.902,
+    "end": 6.163,
+    "text": "tiny",
+    "speaker": "S1"
+   },
+   {
+    "start": 6.192,
+    "end": 6.557,
+    "text": "screen",
+    "speaker": "S1"
+   },
+   {
+    "start": 6.597,
+    "end": 7.066,
+    "text": "recorder",
+    "speaker": "S1"
+   },
+   {
+    "start": 7.118,
+    "end": 7.327,
+    "text": "for",
+    "speaker": "S1"
+   },
+   {
+    "start": 7.35,
+    "end": 7.558,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 7.582,
+    "end": 7.79,
+    "text": "Mac,",
+    "speaker": "S1"
+   },
+   {
+    "start": 7.813,
+    "end": 8.022,
+    "text": "and,",
+    "speaker": "S1"
+   },
+   {
+    "start": 8.045,
+    "end": 8.201,
+    "text": "um,",
+    "speaker": "S1",
+    "filler": true
+   },
+   {
+    "start": 8.219,
+    "end": 8.792,
+    "text": "everything",
+    "speaker": "S1"
+   },
+   {
+    "start": 8.856,
+    "end": 9.168,
+    "text": "stays",
+    "speaker": "S1"
+   },
+   {
+    "start": 9.203,
+    "end": 9.36,
+    "text": "on",
+    "speaker": "S1"
+   },
+   {
+    "start": 9.377,
+    "end": 9.637,
+    "text": "your",
+    "speaker": "S1"
+   },
+   {
+    "start": 9.666,
+    "end": 10.083,
+    "text": "machine.",
+    "speaker": "S1"
+   },
+   {
+    "start": 10.66,
+    "end": 10.862,
+    "text": "You",
+    "speaker": "S1"
+   },
+   {
+    "start": 10.884,
+    "end": 11.188,
+    "text": "press",
+    "speaker": "S1"
+   },
+   {
+    "start": 11.221,
+    "end": 11.575,
+    "text": "Option",
+    "speaker": "S1"
+   },
+   {
+    "start": 11.614,
+    "end": 11.918,
+    "text": "Shift",
+    "speaker": "S1"
+   },
+   {
+    "start": 11.951,
+    "end": 12.103,
+    "text": "L,",
+    "speaker": "S1"
+   },
+   {
+    "start": 12.12,
+    "end": 12.322,
+    "text": "you",
+    "speaker": "S1"
+   },
+   {
+    "start": 12.345,
+    "end": 12.597,
+    "text": "talk,",
+    "speaker": "S1"
+   },
+   {
+    "start": 12.625,
+    "end": 12.828,
+    "text": "you",
+    "speaker": "S1"
+   },
+   {
+    "start": 12.85,
+    "end": 13.153,
+    "text": "press",
+    "speaker": "S1"
+   },
+   {
+    "start": 13.187,
+    "end": 13.339,
+    "text": "it",
+    "speaker": "S1"
+   },
+   {
+    "start": 13.356,
+    "end": 13.659,
+    "text": "again,",
+    "speaker": "S1"
+   },
+   {
+    "start": 13.693,
+    "end": 13.895,
+    "text": "and",
+    "speaker": "S1"
+   },
+   {
+    "start": 13.917,
+    "end": 14.119,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 14.142,
+    "end": 14.445,
+    "text": "video",
+    "speaker": "S1"
+   },
+   {
+    "start": 14.479,
+    "end": 14.63,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 14.647,
+    "end": 14.799,
+    "text": "in",
+    "speaker": "S1"
+   },
+   {
+    "start": 14.816,
+    "end": 15.069,
+    "text": "your",
+    "speaker": "S1"
+   },
+   {
+    "start": 15.097,
+    "end": 15.45,
+    "text": "Movies",
+    "speaker": "S1"
+   },
+   {
+    "start": 15.49,
+    "end": 15.844,
+    "text": "folder.",
+    "speaker": "S1"
+   },
+   {
+    "start": 16.963,
+    "end": 17.116,
+    "text": "So",
+    "speaker": "S2"
+   },
+   {
+    "start": 17.133,
+    "end": 17.387,
+    "text": "wait,",
+    "speaker": "S2"
+   },
+   {
+    "start": 17.415,
+    "end": 17.72,
+    "text": "there",
+    "speaker": "S2"
+   },
+   {
+    "start": 17.754,
+    "end": 17.907,
+    "text": "is",
+    "speaker": "S2"
+   },
+   {
+    "start": 17.924,
+    "end": 18.076,
+    "text": "no",
+    "speaker": "S2"
+   },
+   {
+    "start": 18.093,
+    "end": 18.5,
+    "text": "account",
+    "speaker": "S2"
+   },
+   {
+    "start": 18.546,
+    "end": 18.749,
+    "text": "and",
+    "speaker": "S2"
+   },
+   {
+    "start": 18.772,
+    "end": 18.924,
+    "text": "no",
+    "speaker": "S2"
+   },
+   {
+    "start": 18.941,
+    "end": 19.297,
+    "text": "upload",
+    "speaker": "S2"
+   },
+   {
+    "start": 19.337,
+    "end": 19.49,
+    "text": "at",
+    "speaker": "S2"
+   },
+   {
+    "start": 19.507,
+    "end": 19.71,
+    "text": "all?",
+    "speaker": "S2"
+   },
+   {
+    "start": 20.263,
+    "end": 20.41,
+    "text": "Uh,",
+    "speaker": "S2",
+    "filler": true
+   },
+   {
+    "start": 20.426,
+    "end": 20.623,
+    "text": "how",
+    "speaker": "S2"
+   },
+   {
+    "start": 20.645,
+    "end": 20.792,
+    "text": "do",
+    "speaker": "S2"
+   },
+   {
+    "start": 20.808,
+    "end": 20.956,
+    "text": "I",
+    "speaker": "S2"
+   },
+   {
+    "start": 20.972,
+    "end": 21.218,
+    "text": "send",
+    "speaker": "S2"
+   },
+   {
+    "start": 21.245,
+    "end": 21.441,
+    "text": "the",
+    "speaker": "S2"
+   },
+   {
+    "start": 21.463,
+    "end": 21.758,
+    "text": "video",
+    "speaker": "S2"
+   },
+   {
+    "start": 21.79,
+    "end": 21.938,
+    "text": "to",
+    "speaker": "S2"
+   },
+   {
+    "start": 21.954,
+    "end": 22.347,
+    "text": "someone",
+    "speaker": "S2"
+   },
+   {
+    "start": 22.391,
+    "end": 22.636,
+    "text": "then?",
+    "speaker": "S2"
+   },
+   {
+    "start": 23.744,
+    "end": 24.064,
+    "text": "Right,",
+    "speaker": "S1"
+   },
+   {
+    "start": 24.1,
+    "end": 24.26,
+    "text": "no",
+    "speaker": "S1"
+   },
+   {
+    "start": 24.278,
+    "end": 24.705,
+    "text": "account.",
+    "speaker": "S1"
+   },
+   {
+    "start": 24.752,
+    "end": 24.966,
+    "text": "The",
+    "speaker": "S1"
+   },
+   {
+    "start": 24.99,
+    "end": 25.257,
+    "text": "file",
+    "speaker": "S1"
+   },
+   {
+    "start": 25.287,
+    "end": 25.447,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 25.465,
+    "end": 25.625,
+    "text": "on",
+    "speaker": "S1"
+   },
+   {
+    "start": 25.643,
+    "end": 25.91,
+    "text": "your",
+    "speaker": "S1"
+   },
+   {
+    "start": 25.939,
+    "end": 26.474,
+    "text": "clipboard",
+    "speaker": "S1"
+   },
+   {
+    "start": 26.533,
+    "end": 26.8,
+    "text": "when",
+    "speaker": "S1"
+   },
+   {
+    "start": 26.83,
+    "end": 27.043,
+    "text": "you",
+    "speaker": "S1"
+   },
+   {
+    "start": 27.067,
+    "end": 27.334,
+    "text": "stop,",
+    "speaker": "S1"
+   },
+   {
+    "start": 27.364,
+    "end": 27.524,
+    "text": "so",
+    "speaker": "S1"
+   },
+   {
+    "start": 27.542,
+    "end": 27.755,
+    "text": "you",
+    "speaker": "S1"
+   },
+   {
+    "start": 27.779,
+    "end": 28.046,
+    "text": "just",
+    "speaker": "S1"
+   },
+   {
+    "start": 28.076,
+    "end": 28.396,
+    "text": "paste",
+    "speaker": "S1"
+   },
+   {
+    "start": 28.432,
+    "end": 28.592,
+    "text": "it",
+    "speaker": "S1"
+   },
+   {
+    "start": 28.61,
+    "end": 28.77,
+    "text": "in",
+    "speaker": "S1"
+   },
+   {
+    "start": 28.788,
+    "end": 29.109,
+    "text": "Slack.",
+    "speaker": "S1"
+   },
+   {
+    "start": 29.674,
+    "end": 29.897,
+    "text": "Now,",
+    "speaker": "S1"
+   },
+   {
+    "start": 29.921,
+    "end": 30.088,
+    "text": "um,",
+    "speaker": "S1",
+    "filler": true
+   },
+   {
+    "start": 30.107,
+    "end": 30.329,
+    "text": "let",
+    "speaker": "S1"
+   },
+   {
+    "start": 30.354,
+    "end": 30.521,
+    "text": "me",
+    "speaker": "S1"
+   },
+   {
+    "start": 30.54,
+    "end": 30.818,
+    "text": "show",
+    "speaker": "S1"
+   },
+   {
+    "start": 30.849,
+    "end": 31.071,
+    "text": "you",
+    "speaker": "S1"
+   },
+   {
+    "start": 31.096,
+    "end": 31.319,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 31.343,
+    "end": 31.733,
+    "text": "editor,",
+    "speaker": "S1"
+   },
+   {
+    "start": 31.776,
+    "end": 32.11,
+    "text": "which",
+    "speaker": "S1"
+   },
+   {
+    "start": 32.147,
+    "end": 32.314,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 32.332,
+    "end": 32.555,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 32.58,
+    "end": 32.802,
+    "text": "new",
+    "speaker": "S1"
+   },
+   {
+    "start": 32.827,
+    "end": 33.105,
+    "text": "part.",
+    "speaker": "S1"
+   },
+   {
+    "start": 33.666,
+    "end": 33.791,
+    "text": "On",
+    "speaker": "S1"
+   },
+   {
+    "start": 33.805,
+    "end": 33.971,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 33.99,
+    "end": 34.24,
+    "text": "right",
+    "speaker": "S1"
+   },
+   {
+    "start": 34.268,
+    "end": 34.434,
+    "text": "you",
+    "speaker": "S1"
+   },
+   {
+    "start": 34.453,
+    "end": 34.661,
+    "text": "have",
+    "speaker": "S1"
+   },
+   {
+    "start": 34.684,
+    "end": 34.851,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 34.869,
+    "end": 35.327,
+    "text": "transcript,",
+    "speaker": "S1"
+   },
+   {
+    "start": 35.378,
+    "end": 35.587,
+    "text": "with",
+    "speaker": "S1"
+   },
+   {
+    "start": 35.61,
+    "end": 35.86,
+    "text": "every",
+    "speaker": "S1"
+   },
+   {
+    "start": 35.887,
+    "end": 36.096,
+    "text": "word",
+    "speaker": "S1"
+   },
+   {
+    "start": 36.119,
+    "end": 36.41,
+    "text": "linked",
+    "speaker": "S1"
+   },
+   {
+    "start": 36.443,
+    "end": 36.568,
+    "text": "to",
+    "speaker": "S1"
+   },
+   {
+    "start": 36.582,
+    "end": 36.748,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 36.767,
+    "end": 37.017,
+    "text": "video.",
+    "speaker": "S1"
+   },
+   {
+    "start": 37.574,
+    "end": 37.698,
+    "text": "If",
+    "speaker": "S1"
+   },
+   {
+    "start": 37.712,
+    "end": 37.836,
+    "text": "I",
+    "speaker": "S1"
+   },
+   {
+    "start": 37.849,
+    "end": 38.138,
+    "text": "select",
+    "speaker": "S1"
+   },
+   {
+    "start": 38.17,
+    "end": 38.294,
+    "text": "a",
+    "speaker": "S1"
+   },
+   {
+    "start": 38.308,
+    "end": 38.679,
+    "text": "sentence",
+    "speaker": "S1"
+   },
+   {
+    "start": 38.72,
+    "end": 38.885,
+    "text": "and",
+    "speaker": "S1"
+   },
+   {
+    "start": 38.903,
+    "end": 39.151,
+    "text": "press",
+    "speaker": "S1"
+   },
+   {
+    "start": 39.178,
+    "end": 39.467,
+    "text": "delete,",
+    "speaker": "S1"
+   },
+   {
+    "start": 39.499,
+    "end": 39.664,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 39.683,
+    "end": 40.054,
+    "text": "sentence",
+    "speaker": "S1"
+   },
+   {
+    "start": 40.095,
+    "end": 40.219,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 40.233,
+    "end": 40.521,
+    "text": "struck",
+    "speaker": "S1"
+   },
+   {
+    "start": 40.553,
+    "end": 40.883,
+    "text": "through",
+    "speaker": "S1"
+   },
+   {
+    "start": 40.92,
+    "end": 41.085,
+    "text": "and",
+    "speaker": "S1"
+   },
+   {
+    "start": 41.103,
+    "end": 41.31,
+    "text": "that",
+    "speaker": "S1"
+   },
+   {
+    "start": 41.333,
+    "end": 41.539,
+    "text": "part",
+    "speaker": "S1"
+   },
+   {
+    "start": 41.562,
+    "end": 41.685,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 41.699,
+    "end": 41.864,
+    "text": "cut",
+    "speaker": "S1"
+   },
+   {
+    "start": 41.883,
+    "end": 42.089,
+    "text": "from",
+    "speaker": "S1"
+   },
+   {
+    "start": 42.112,
+    "end": 42.277,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 42.295,
+    "end": 42.543,
+    "text": "video.",
+    "speaker": "S1"
+   },
+   {
+    "start": 43.1,
+    "end": 43.345,
+    "text": "This",
+    "speaker": "S1"
+   },
+   {
+    "start": 43.373,
+    "end": 43.618,
+    "text": "next",
+    "speaker": "S1"
+   },
+   {
+    "start": 43.645,
+    "end": 43.842,
+    "text": "bit",
+    "speaker": "S1"
+   },
+   {
+    "start": 43.864,
+    "end": 44.011,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 44.027,
+    "end": 44.469,
+    "text": "honestly",
+    "speaker": "S1"
+   },
+   {
+    "start": 44.518,
+    "end": 44.665,
+    "text": "a",
+    "speaker": "S1"
+   },
+   {
+    "start": 44.682,
+    "end": 44.878,
+    "text": "bit",
+    "speaker": "S1"
+   },
+   {
+    "start": 44.9,
+    "end": 45.145,
+    "text": "slow,",
+    "speaker": "S1"
+   },
+   {
+    "start": 45.173,
+    "end": 45.369,
+    "text": "I'm",
+    "speaker": "S1"
+   },
+   {
+    "start": 45.391,
+    "end": 45.636,
+    "text": "just",
+    "speaker": "S1"
+   },
+   {
+    "start": 45.663,
+    "end": 46.154,
+    "text": "scrolling",
+    "speaker": "S1"
+   },
+   {
+    "start": 46.209,
+    "end": 46.601,
+    "text": "through",
+    "speaker": "S1"
+   },
+   {
+    "start": 46.645,
+    "end": 46.841,
+    "text": "the",
+    "speaker": "S1"
+   },
+   {
+    "start": 46.863,
+    "end": 47.305,
+    "text": "settings,",
+    "speaker": "S1"
+   },
+   {
+    "start": 47.354,
+    "end": 47.501,
+    "text": "uh,",
+    "speaker": "S1",
+    "filler": true
+   },
+   {
+    "start": 47.518,
+    "end": 47.714,
+    "text": "one",
+    "speaker": "S1"
+   },
+   {
+    "start": 47.736,
+    "end": 47.883,
+    "text": "by",
+    "speaker": "S1"
+   },
+   {
+    "start": 47.9,
+    "end": 48.096,
+    "text": "one,",
+    "speaker": "S1"
+   },
+   {
+    "start": 48.118,
+    "end": 48.265,
+    "text": "to",
+    "speaker": "S1"
+   },
+   {
+    "start": 48.281,
+    "end": 48.527,
+    "text": "show",
+    "speaker": "S1"
+   },
+   {
+    "start": 48.554,
+    "end": 48.799,
+    "text": "that",
+    "speaker": "S1"
+   },
+   {
+    "start": 48.827,
+    "end": 49.219,
+    "text": "nothing",
+    "speaker": "S1"
+   },
+   {
+    "start": 49.263,
+    "end": 49.41,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 49.427,
+    "end": 49.77,
+    "text": "hidden,",
+    "speaker": "S1"
+   },
+   {
+    "start": 49.808,
+    "end": 50.005,
+    "text": "and",
+    "speaker": "S1"
+   },
+   {
+    "start": 50.027,
+    "end": 50.321,
+    "text": "there",
+    "speaker": "S1"
+   },
+   {
+    "start": 50.354,
+    "end": 50.501,
+    "text": "is",
+    "speaker": "S1"
+   },
+   {
+    "start": 50.517,
+    "end": 50.861,
+    "text": "really",
+    "speaker": "S1"
+   },
+   {
+    "start": 50.899,
+    "end": 51.096,
+    "text": "not",
+    "speaker": "S1"
+   },
+   {
+    "start": 51.117,
+    "end": 51.363,
+    "text": "much",
+    "speaker": "S1"
+   },
+   {
+    "start": 51.39,
+    "end": 51.537,
+    "text": "to",
+    "speaker": "S1"
+   },
+   {
+    "start": 51.554,
+    "end": 51.75,
+    "text": "see",
+    "speaker": "S1"
+   },
+   {
+    "start": 51.772,
+    "end": 52.017,
+    "text": "here.",
+    "speaker": "S1"
+   },
+   {
+    "start": 52.575,
+    "end": 52.694,
+    "text": "So",
+    "speaker": "S1"
+   },
+   {
+    "start": 52.708,
+    "end": 52.827,
+    "text": "I",
+    "speaker": "S1"
+   },
+   {
+    "start": 52.841,
+    "end": 53.0,
+    "text": "can",
+    "speaker": "S1"
+   },
+   {
+    "start": 53.018,
+    "end": 53.298,
+    "text": "select",
+    "speaker": "S1"
+   },
+   {
+    "start": 53.329,
+    "end": 53.448,
+    "text": "it",
+    "speaker": "S1"
+   },
+   {
+    "start": 53.462,
+    "end": 53.621,
+    "text": "and",
+    "speaker": "S1"
+   },
+   {
+    "start": 53.639,
+    "end": 53.839,
+    "text": "play",
+    "speaker": "S1"
+   },
+   {
+    "start": 53.861,
+    "end": 53.981,
+    "text": "it",
+    "speaker": "S1"
+   },
+   {
+    "start": 53.994,
+    "end": 54.114,
+    "text": "at",
+    "speaker": "S1"
+   },
+   {
+    "start": 54.127,
+    "end": 54.287,
+    "text": "one",
+    "speaker": "S1"
+   },
+   {
+    "start": 54.304,
+    "end": 54.464,
+    "text": "and",
+    "speaker": "S1"
+   },
+   {
+    "start": 54.482,
+    "end": 54.602,
+    "text": "a",
+    "speaker": "S1"
+   },
+   {
+    "start": 54.615,
+    "end": 54.815,
+    "text": "half",
+    "speaker": "S1"
+   },
+   {
+    "start": 54.837,
+    "end": 55.076,
+    "text": "speed",
+    "speaker": "S1"
+   },
+   {
+    "start": 55.103,
+    "end": 55.422,
+    "text": "instead",
+    "speaker": "S1"
+   },
+   {
+    "start": 55.458,
+    "end": 55.577,
+    "text": "of",
+    "speaker": "S1"
+   },
+   {
+    "start": 55.591,
+    "end": 55.91,
+    "text": "cutting",
+    "speaker": "S1"
+   },
+   {
+    "start": 55.946,
+    "end": 56.065,
+    "text": "it.",
+    "speaker": "S1"
+   },
+   {
+    "start": 57.159,
+    "end": 57.342,
+    "text": "And",
+    "speaker": "S2"
+   },
+   {
+    "start": 57.362,
+    "end": 57.545,
+    "text": "the",
+    "speaker": "S2"
+   },
+   {
+    "start": 57.566,
+    "end": 57.978,
+    "text": "original",
+    "speaker": "S2"
+   },
+   {
+    "start": 58.024,
+    "end": 58.481,
+    "text": "recording",
+    "speaker": "S2"
+   },
+   {
+    "start": 58.532,
+    "end": 58.67,
+    "text": "is",
+    "speaker": "S2"
+   },
+   {
+    "start": 58.685,
+    "end": 58.96,
+    "text": "never",
+    "speaker": "S2"
+   },
+   {
+    "start": 58.99,
+    "end": 59.357,
+    "text": "changed?",
+    "speaker": "S2"
+   },
+   {
+    "start": 60.477,
+    "end": 60.749,
+    "text": "Never.",
+    "speaker": "S1"
+   },
+   {
+    "start": 60.779,
+    "end": 60.96,
+    "text": "The",
+    "speaker": "S1"
+   },
+   {
+    "start": 60.98,
+    "end": 61.252,
+    "text": "edits",
+    "speaker": "S1"
+   },
+   {
+    "start": 61.282,
+    "end": 61.509,
+    "text": "live",
+    "speaker": "S1"
+   },
+   {
+    "start": 61.534,
+    "end": 61.761,
+    "text": "next",
+    "speaker": "S1"
+   },
+   {
+    "start": 61.786,
+    "end": 61.922,
+    "text": "to",
+    "speaker": "S1"
+   },
+   {
+    "start": 61.937,
+    "end": 62.073,
+    "text": "it,",
+    "speaker": "S1"
+   },
+   {
+    "start": 62.088,
+    "end": 62.269,
+    "text": "and",
+    "speaker": "S1"
+   },
+   {
+    "start": 62.289,
+    "end": 62.47,
+    "text": "you",
+    "speaker": "S1"
+   },
+   {
+    "start": 62.49,
+    "end": 62.898,
+    "text": "download",
+    "speaker": "S1"
+   },
+   {
+    "start": 62.943,
+    "end": 63.079,
+    "text": "a",
+    "speaker": "S1"
+   },
+   {
+    "start": 63.094,
+    "end": 63.275,
+    "text": "new",
+    "speaker": "S1"
+   },
+   {
+    "start": 63.296,
+    "end": 63.522,
+    "text": "file",
+    "speaker": "S1"
+   },
+   {
+    "start": 63.547,
+    "end": 63.774,
+    "text": "when",
+    "speaker": "S1"
+   },
+   {
+    "start": 63.799,
+    "end": 64.116,
+    "text": "you're",
+    "speaker": "S1"
+   },
+   {
+    "start": 64.151,
+    "end": 64.378,
+    "text": "done.",
+    "speaker": "S1"
+   },
+   {
+    "start": 64.933,
+    "end": 65.253,
+    "text": "Okay,",
+    "speaker": "S1"
+   },
+   {
+    "start": 65.289,
+    "end": 65.737,
+    "text": "that's",
+    "speaker": "S1"
+   },
+   {
+    "start": 65.787,
+    "end": 65.979,
+    "text": "it,",
+    "speaker": "S1"
+   },
+   {
+    "start": 66.001,
+    "end": 66.193,
+    "text": "uh,",
+    "speaker": "S1",
+    "filler": true
+   },
+   {
+    "start": 66.214,
+    "end": 66.663,
+    "text": "thanks",
+    "speaker": "S1"
+   },
+   {
+    "start": 66.712,
+    "end": 66.969,
+    "text": "for",
+    "speaker": "S1"
+   },
+   {
+    "start": 66.997,
+    "end": 67.574,
+    "text": "watching.",
+    "speaker": "S1"
+   }
+  ]
+ },
+ "edits": {
+  "revision": 3,
+  "segments": [
+   {
+    "start": 8.025,
+    "end": 8.221,
+    "rate": 0
+   },
+   {
+    "start": 16.913,
+    "end": 19.76,
+    "rate": 0
+   },
+   {
+    "start": 43.05,
+    "end": 52.067,
+    "rate": 1.5
+   }
+  ]
+ },
+ "export": null
+}

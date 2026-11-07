@@ -1,0 +1,89 @@
+{
+  "note": "Voxtral 3 word-time probes, 2026-11-06, on web/fixtures/demo.mp4 audio (16 kHz mono WAV)",
+  "mini3_diarize_word_http422": {
+    "object": "error",
+    "message": {
+      "detail": [
+        {
+          "type": "assertion_error",
+          "loc": [],
+          "msg": "Assertion failed, When diarize is set to True and streaming is disabled, the timestamp granularity must be set to ['segment'], got ['word']",
+          "input": {
+            "model": "voxtral-mini-transcribe-3",
+            "audio": "--audio-bytes--",
+            "language": null,
+            "temperature": null,
+            "max_tokens": null,
+            "stream": false,
+            "return_language": false,
+            "streaming": "disabled",
+            "timestamp_granularities": [
+              "word"
+            ],
+            "top_logprobs": null,
+            "diarize": true,
+            "speaker_references": {},
+            "verbatim": false,
+            "context_bias": [],
+            "target_streaming_delay_ms": null,
+            "metadata": null
+          },
+          "ctx": {
+            "error": {}
+          }
+        }
+      ]
+    },
+    "type": "invalid_request_error",
+    "param": null,
+    "code": null,
+    "raw_status_code": 422
+  },
+  "mini3_word_no_diarize_http400": {
+    "object": "error",
+    "message": "Word-level segments are not enabled for this model",
+    "type": "invalid_request_invalid_args",
+    "param": null,
+    "code": "3051",
+    "raw_status_code": 400
+  },
+  "small3_diarize_word_http422": {
+    "object": "error",
+    "message": {
+      "detail": [
+        {
+          "type": "assertion_error",
+          "loc": [],
+          "msg": "Assertion failed, When diarize is set to True and streaming is disabled, the timestamp granularity must be set to ['segment'], got ['word']",
+          "input": {
+            "model": "voxtral-small-transcribe-3",
+            "audio": "--audio-bytes--",
+            "language": null,
+            "temperature": null,
+            "max_tokens": null,
+            "stream": false,
+            "return_language": false,
+            "streaming": "disabled",
+            "timestamp_granularities": [
+              "word"
+            ],
+            "top_logprobs": null,
+            "diarize": true,
+            "speaker_references": {},
+            "verbatim": false,
+            "context_bias": [],
+            "target_streaming_delay_ms": null,
+            "metadata": null
+          },
+          "ctx": {
+            "error": {}
+          }
+        }
+      ]
+    },
+    "type": "invalid_request_error",
+    "param": null,
+    "code": null,
+    "raw_status_code": 422
+  }
+}
