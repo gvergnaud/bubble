@@ -20,21 +20,26 @@ public enum Waveform {
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard !tracks.isEmpty else { return Data() }
         let duration = try await asset.load(.duration).seconds
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: monoFloat32Settings(sampleRate: sampleRate))
-        output.alwaysCopiesSampleData = false
-        reader.add(output)
-        guard reader.startReading() else { throw Failure.unreadable(reader.error?.localizedDescription ?? "cannot read audio") }
-        defer { if reader.status == .reading { reader.cancelReading() } }
+        // The read loop blocks: off the cooperative pool (BlockingRead). The asset and tracks are only
+        // used there from now on.
+        nonisolated(unsafe) let readAsset = asset, readTracks = tracks
+        return try await BlockingRead.run { checkCancellation in
+            let reader = try AVAssetReader(asset: readAsset)
+            let output = AVAssetReaderAudioMixOutput(audioTracks: readTracks, audioSettings: monoFloat32Settings(sampleRate: sampleRate))
+            output.alwaysCopiesSampleData = false
+            reader.add(output)
+            guard reader.startReading() else { throw Failure.unreadable(reader.error?.localizedDescription ?? "cannot read audio") }
+            defer { if reader.status == .reading { reader.cancelReading() } }
 
-        var accumulator = PeakAccumulator(samplesPerPeak: sampleRate / peaksPerSecond, gain: gain)
-        accumulator.reserve(Int(duration * Double(peaksPerSecond)) + 1)
-        while let buffer = output.copyNextSampleBuffer() {
-            try Task.checkCancellation()
-            try forEachFloatChunk(in: buffer) { accumulator.add($0) }
+            var accumulator = PeakAccumulator(samplesPerPeak: sampleRate / peaksPerSecond, gain: gain)
+            accumulator.reserve(Int(duration * Double(peaksPerSecond)) + 1)
+            while let buffer = output.copyNextSampleBuffer() {
+                try checkCancellation()
+                try forEachFloatChunk(in: buffer) { accumulator.add($0) }
+            }
+            if reader.status == .failed { throw Failure.unreadable(reader.error?.localizedDescription ?? "audio read failed") }
+            return accumulator.finish()
         }
-        if reader.status == .failed { throw Failure.unreadable(reader.error?.localizedDescription ?? "audio read failed") }
-        return accumulator.finish()
     }
 
     /// Interleaved Float32 LPCM, mono (AVFoundation downmixes and resamples).

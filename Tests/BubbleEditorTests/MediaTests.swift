@@ -1,6 +1,7 @@
 // Owner: E2 (media). Waveform, Poster, Exporter, ExportJobs on web/fixtures/demo.mp4 and synthetic media.
 // Exports go to temp folders; the source is never written (checked by hash).
 @testable import BubbleEditor
+import AVFoundation
 import CryptoKit
 import ImageIO
 import Foundation
@@ -189,7 +190,10 @@ import Testing
         let dir = try MediaFixtures.tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let needed = Exporter.estimatedBytes(width: 1280, height: 720, duration: 2)
-        #expect(needed == Int64(((4_000_000.0 + 128_000) / 8 * 2 * 1.1).rounded(.up)))   // 4 Mb/s floor at 720p
+        // 4 Mb/s floor at 720p + AAC, +10 %; + the sound rendered first (16-bit 48 kHz: 96 kB/s).
+        let encoded: Double = (4_000_000.0 + 128_000) / 8 * 2 * 1.1
+        let sound: Double = 96_000 * 2
+        #expect(needed == Int64((encoded + sound).rounded(.up)))
         await #expect(throws: Exporter.Failure.notEnoughSpace(needed: needed)) {
             try await Exporter.render(source: MediaFixtures.demo, pieces: [MediaPiece(start: 0, end: 2, rate: 1)],
                                       to: dir.appendingPathComponent("x.mp4"), bytesFree: { _ in 1000 })
@@ -227,6 +231,23 @@ import Testing
     }
 
     // MARK: Sound at the joins
+
+    /// Close pieces share a reader (their gap is decoded and skipped); a long gap or a piece out of order
+    /// opens a new one. A frame lands at its source time on the output timeline, or at a part's start when
+    /// it was already showing, once per part it shows in; a frame inside a cut lands nowhere.
+    @Test func videoRunsGroupPiecesAndPlaceFrames() {
+        let pieces = [MediaPiece(start: 0, end: 2, rate: 1), MediaPiece(start: 2.5, end: 4, rate: 2),
+                      MediaPiece(start: 10, end: 11, rate: 1), MediaPiece(start: 1, end: 1.5, rate: 1)]
+        let runs = VideoRun.make(pieces: pieces, outputStarts: [0, 2, 2.75, 3.75])
+        #expect(runs.map(\.parts.count) == [2, 1, 1])
+        #expect(runs.map(\.start) == [0, 10, 1] && runs.map(\.end) == [4, 11, 1.5])
+        let run = runs[0]
+        #expect(run.outputTimes(shownFrom: 1.0, to: 1.1) == [1.0])
+        #expect(run.outputTimes(shownFrom: 2.1, to: 2.2).isEmpty)          // in the cut
+        #expect(run.outputTimes(shownFrom: 2.4, to: 2.6) == [2.0])         // showing when 2.5 starts
+        #expect(run.outputTimes(shownFrom: 3.0, to: 3.1) == [2.25])        // 2×: (3 − 2.5) / 2
+        #expect(run.outputTimes(shownFrom: 1.9, to: .infinity) == [1.9, 2.0])   // shows across the cut
+    }
 
     @Test func joinPlanOverlapsNeighboursAroundEachJoin() {
         let pieces = [MediaPiece(start: 0, end: 2, rate: 1), MediaPiece(start: 3, end: 5, rate: 1), MediaPiece(start: 5, end: 7, rate: 1.5)]

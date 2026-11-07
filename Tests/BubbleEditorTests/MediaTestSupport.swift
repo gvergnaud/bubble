@@ -1,6 +1,7 @@
 // Owner: E2 (media). Test helpers: a synthetic A/V file whose flashes and beeps happen at known times
 // (white frames + 1 kHz beeps), and probes that find them again in an export.
 import AVFoundation
+import BubbleEditor
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -173,6 +174,17 @@ struct Probe {
         let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         let v = try await asset.loadTracks(withMediaType: .video).first!
         let a = try await asset.loadTracks(withMediaType: .audio).first
+        // The read loop blocks: off the cooperative pool (BlockingRead, the gate's hang).
+        nonisolated(unsafe) let readAsset = asset, readV = v, readA = a
+        let (times, flashes, samples) = try await BlockingRead.run { _ in try decode(readAsset, video: readV, audio: readA) }
+        return Probe(duration: try await asset.load(.duration).seconds,
+                     videoDuration: try await v.load(.timeRange).duration.seconds,
+                     audioDuration: try await a?.load(.timeRange).duration.seconds ?? 0,
+                     frameTimes: times, flashes: flashes, samples: samples)
+    }
+
+    private static func decode(_ asset: AVAsset, video v: AVAssetTrack, audio a: AVAssetTrack?) throws
+        -> (times: [Double], flashes: [Double], samples: [Float]) {
         let reader = try AVAssetReader(asset: asset)
         let vOut = AVAssetReaderTrackOutput(track: v, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
         reader.add(vOut)
@@ -215,10 +227,7 @@ struct Probe {
             }
         }
         times.sort()
-        return Probe(duration: try await asset.load(.duration).seconds,
-                     videoDuration: try await v.load(.timeRange).duration.seconds,
-                     audioDuration: try await a?.load(.timeRange).duration.seconds ?? 0,
-                     frameTimes: times, flashes: flashes, samples: samples)
+        return (times, flashes, samples)
     }
 
     /// Times where the sound starts after ≥ 0.15 s of quiet (1 ms windows over 0.05).

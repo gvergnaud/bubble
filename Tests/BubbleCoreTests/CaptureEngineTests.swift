@@ -27,7 +27,12 @@ private func facts(_ url: URL) async throws -> FileFacts {
         let reader = try AVAssetReader(asset: asset)
         let out = AVAssetReaderTrackOutput(track: video, outputSettings: nil)
         reader.add(out); reader.startReading()
-        while let sb = out.copyNextSampleBuffer() { frames += CMSampleBufferGetNumSamples(sb) }
+        // Off the cooperative pool (BubbleTesting.offPool): a sync read loop there starved the parallel gate.
+        frames = await offPool {
+            var n = 0
+            while let sb = out.copyNextSampleBuffer() { n += CMSampleBufferGetNumSamples(sb) }
+            return n
+        }
     }
     if let a = try await asset.loadTracks(withMediaType: .audio).first {
         audio = try await a.load(.timeRange).duration.seconds

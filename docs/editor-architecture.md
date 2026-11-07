@@ -26,7 +26,7 @@ engine (§5). Everything else is decided here.
 | Persistence | One project folder per recording in `~/Library/Application Support/Bubble/Projects/<id>/` (project.json, waveform, poster, exports). Atomic writes. Autosave from the page (600 ms debounce) | The recordings folder stays clean (it is the user's library); close the page, reopen, it's all there |
 | Project id ↔ recording | UUID; stored in an extended attribute of the recording (`local.bubble.project-id`) **and** in `Projects/index.json` (path, size, creation date) | Survives a rename/move in Finder. An xattr is metadata, the video bytes are never written |
 | Preview | The page plays the **source** file and skips cuts / sets `playbackRate` (pitch kept by the browser) | No render to edit; instant |
-| Export | `AVAssetReader` on an `AVMutableComposition` (cuts by insertion, speed by `scaleTimeRange`, audio via `AVAssetReaderAudioMixOutput` with `audioTimePitchAlgorithm = .spectral`) → `AVAssetWriter` H.264 + AAC, 30 fps CFR | **Verified (spike):** exact duration. `AVAssetExportSession` with H.264 presets **fails** (-16364) as soon as a range is sped up; HEVC preset works but HEVC plays in fewer places. Reader/writer gives codec, bitrate, progress and cancel |
+| Export | Sound first (`AudioJoiner`: one `AVAssetReaderAudioMixOutput` per piece, `.spectral`, joins crossfaded) to a work file; then plain `AVAssetReader`s on the source video track, frames placed on the output timeline (§4; an `AVMutableComposition` crashed and hung) → `AVAssetWriter` H.264 + AAC, 30 fps CFR | **Verified (spike):** exact duration. `AVAssetExportSession` with H.264 presets **fails** (-16364) as soon as a range is sped up; HEVC preset works but HEVC plays in fewer places. Reader/writer gives codec, bitrate, progress and cancel |
 | Transcription | Behind a `Transcriber` protocol; engines listed to the page (`GET /api/engines`) | Which engine is the user's decision (§5); the rest of the system doesn't care |
 | Web stack | Plain HTML/CSS/ES modules in `web/editor/`, no CDN, no runtime fetch outside the server; copied into `Bubble.app/Contents/Resources/editor/` by `scripts/build-app.sh` | Fully local, no Node needed to build the app |
 
@@ -85,11 +85,29 @@ engine (§5). Everything else is decided here.
   (×255, a gentle gain of 1.4 then clamp). ~1 s for an hour of audio. Computed on first open,
   `202` until ready.
 - `Poster`: `AVAssetImageGenerator` at 1 s, 1280 px wide, JPEG.
+- **No blocking read on the Swift concurrency pool.** A `copyNextSampleBuffer()` loop blocks its
+  thread; the cooperative pool has one per core (12 here). Waveform, AudioExtract and the tests'
+  probes ran theirs there: with 3 test processes at once, every pool thread sat in
+  `copyNextSampleBuffer`, MediaToolbox's read scheduler (`FigReadSchedulerExpediteRequest`) waited
+  forever and nothing else could run, test time limits included: the gate's 600 s hang (5 runs in 6;
+  after the fix 0 in 9). So every such loop runs on a dispatch thread and is awaited:
+  `BlockingRead.run` (BubbleEditor), `offPool` (BubbleTesting). The Exporter's pumps and the
+  AudioJoiner already ran on their own queues.
 - `Exporter` (job queue, one export at a time, cancellable):
-  1. `EditPlan.pieces` → `AVMutableComposition`: insert each kept piece; `scaleTimeRange` the
-     ones with rate ≠ 1.
-  2. `AVAssetReaderTrackOutput` (video, `420v`) on that composition. The sound is not in it:
-     **`AudioJoiner`** reads each kept piece on its own (`AVAssetReaderAudioMixOutput`, LPCM 48 kHz
+  1. `EditPlan.pieces` → the output timeline: kept pieces back to back, each lasting
+     (end − start) / rate. **No `AVMutableComposition`** (it was the first design): reading one
+     crashed (SIGSEGV in `FigVisualContextGetEarliestSequentialImageTime` when cancelled from
+     another thread) and, after a failed or cancelled render, hung the next render's video read in
+     the same process (`copyNextSampleBuffer` never returned, 1 render in 3; a plain reader on the
+     source read fine at the same moment). The video is read from the **source track** with plain
+     `AVAssetReaderTrackOutput`s (`420v`), one per **run** of pieces (`VideoRun`: in source order,
+     gaps under 1 s decoded and skipped; a longer gap or a piece out of order opens a new reader,
+     one at a time, limited to the run's range). Each frame is placed at
+     `outputStart + (max(t, piece.start) − piece.start) / rate` for every piece it shows in (a frame
+     already showing when a piece starts lands at its start); a frame inside a cut is not copied.
+     After that change: 8/8 renders right after a failed one, 6/6 gate pairs
+     (aStallFailsInsteadOfHanging + manyJoinsDoNotDrift), 0 stalls.
+  2. **The sound first, alone**, before the video pass: **`AudioJoiner`** reads each kept piece on its own (`AVAssetReaderAudioMixOutput`, LPCM 48 kHz
      mono, `.spectral`, pitch kept) and **crossfades every join** (cuts and speed changes; the
      picture stays a hard cut): 40 ms equal-power (cos/sin), centred on the join, each side
      running 20 ms past it into the recording's neighbouring sound (shorter for a piece under
@@ -105,19 +123,29 @@ engine (§5). Everything else is decided here.
      their output times, A/V within 1 frame. Cost (optimized build, 10 min 1280×720 30 fps
      source): no cut 38.8 s, 200 cuts (201 parts, one reader each + 200 ms pre-roll) 37.3 s
      (0.96×), the same butt-spliced 37.9 s: the video encode dominates, so no reader reuse.
+     It renders the whole joined sound to `work/sound.pcm` (16-bit mono 48 kHz, 96 kB/s, counted in
+     the free-space check), progress 0-10 %; the video pass then reads that file with plain reads.
+     So no two `AVAssetReader`s ever run at once: with the joiner's reader open next to the
+     video's, the video read stalled under load (1 run in 4 with 4 exports at once). Cost of the
+     whole pipeline as it is now (sound pass + plain video readers, same 10 min source): no cut
+     39.5 s, 200 cuts 39.4 s (1.00×), butt-spliced 39.9 s: about 1 s more than before for the sound pass.
   3. **Resample video to 30 fps CFR**: compute each frame's output slot (`round(t × 30)`), skip a
      frame whose slot is already written (speed-ups), repeat the previous frame for an empty slot
      (slow-downs). Without it, sped-up parts give duplicate timestamps (spike: ffmpeg flags
      non-monotonic DTS in the 1.5× range).
   4. `AVAssetWriter` `.mp4`: H.264 High, the source's size, bitrate from `VideoSettings`'s formula,
      AAC 128 kb/s, `shouldOptimizeForNetworkUse = true` (moov first: plays while downloading).
-     Both inputs pumped with `requestMediaDataWhenReady` on their own queues (offline interleaving),
-     **one `AVAssetReader` per track**: with a single reader, when the audio side stopped pulling
-     (audio longer than video) the video side's `copyNextSampleBuffer` blocked forever (seen once
-     in the gate, a 2 h hang). Plus a stall watchdog: no sample written for 60 s → the export fails
-     with "The export stopped making progress. Try again."
-  5. Progress = last written video time / output duration. Cancel = `reader.cancelReading()` +
-     `writer.cancelWriting()` + delete the file.
+     Both inputs pumped with `requestMediaDataWhenReady` on their own queues (offline interleaving):
+     video from its readers, audio from `sound.pcm`. Decoded frames are copied into the adaptor's
+     pool, so the decoder gets its buffers back at once. Plus a stall watchdog: no sample written
+     for 60 s → the export fails with "The export stopped making progress. Try again."; a pump
+     stuck inside a read is abandoned 5 s later, so the render returns instead of hanging.
+     `BUBBLE_EXPORT_DEBUG=1` prints where each pump was and the writer inputs' state.
+  5. Progress = sound share (10 %) + last written video slot / total. Cancel and failure only set
+     flags: **each reader is cancelled by its own pump, on its own queue** (after any read in
+     progress), whatever ended the render; `cancelReading()` from another thread while the pump is
+     inside `copyNextSampleBuffer()` crashed in MediaToolbox. Then `writer.cancelWriting()` and the
+     work folder is deleted.
   Spike numbers (68.6 s fixture, 3 segments incl. 1.5×): 62.585 s expected and got (0 ms off),
   5.7 s to render (≈11× real time) on this Mac. A 1 h 4K recording: expect a few minutes.
 - No edits at all: same pipeline (one code path to test); the user can also just use the source.

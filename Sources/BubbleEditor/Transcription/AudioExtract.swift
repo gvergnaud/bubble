@@ -37,6 +37,17 @@ public enum AudioExtract {
         guard !tracks.isEmpty else { throw Failure.noAudio }
         var firstStart = Double.infinity
         for t in tracks { firstStart = min(firstStart, try await t.load(.timeRange).start.seconds) }
+        // The read loop blocks: off the cooperative pool (BlockingRead).
+        // The asset and tracks are only used there from now on.
+        let start = firstStart
+        nonisolated(unsafe) let readAsset = asset, readTracks = tracks
+        return try await BlockingRead.run { checkCancellation in
+            try write(tracks: readTracks, of: readAsset, firstStart: start, to: destination, checkCancellation: checkCancellation)
+        }
+    }
+
+    private static func write(tracks: [AVAssetTrack], of asset: AVURLAsset, firstStart: Double, to destination: URL,
+                              checkCancellation: () throws -> Void) throws -> Output {
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: sampleRate, AVNumberOfChannelsKey: 1,
@@ -59,7 +70,7 @@ public enum AudioExtract {
         var dataBytes = 0
         var written = false
         while let buffer = output.copyNextSampleBuffer() {
-            try Task.checkCancellation()
+            try checkCancellation()
             guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
             if !written {
                 // Lead-in silence when the first sample is after 0 (keeps source time).

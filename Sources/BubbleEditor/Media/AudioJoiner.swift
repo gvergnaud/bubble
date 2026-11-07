@@ -121,9 +121,46 @@ final class AudioJoiner: @unchecked Sendable {
         format = fmt
     }
 
-    func cancel() {
-        lock.withLock { canceled = true }
+    /// Flag only (any thread): the next `next()` returns nil. The reader is cancelled by `close()` on the
+    /// pump's queue, never from another thread while it may be inside `copyNextSampleBuffer()`.
+    func cancel() { lock.withLock { canceled = true } }
+
+    /// Stops the current reader. Call it on the queue that calls `next()`.
+    func close() {
+        cancel()
         reader?.cancelReading()
+        reader = nil; output = nil
+    }
+
+    /// Renders the whole joined sound to `url`: raw 16-bit PCM, mono 48 kHz (what `PCMFileSource` reads).
+    /// Returns the samples written; stops early (fewer samples) when cancelled. Blocking: run it off the
+    /// cooperative pool.
+    func render(to url: URL, progress: (Double) -> Void) throws -> Int {
+        let fm = FileManager.default
+        try? fm.removeItem(at: url)
+        guard fm.createFile(atPath: url.path, contents: nil) else { throw Failure.read("cannot create \(url.lastPathComponent)") }
+        let out = try FileHandle(forWritingTo: url)
+        defer { try? out.close(); close() }
+        var lastReport = -1.0
+        while let buffer = try next() {
+            var pcm = Data()
+            try Waveform.forEachFloatChunk(in: buffer) { samples in
+                pcm.reserveCapacity(samples.count * 2)
+                for s in samples {
+                    let v = Int16(max(-32768, min(32767, (s * 32767).rounded())))
+                    withUnsafeBytes(of: v.littleEndian) { pcm.append(contentsOf: $0) }
+                }
+            }
+            try out.write(contentsOf: pcm)
+            let p = plan.total > 0 ? Double(emitted) / Double(plan.total) : 1
+            if p - lastReport >= 0.01 { lastReport = p; progress(min(1, p)) }
+        }
+        return emitted
+    }
+
+    /// "part 3/107, 1234/5678 samples, 9 s out" (stall reports).
+    var progressDescription: String {
+        "part \(index + 1)/\(plan.parts.count), \(position)/\(index >= 0 && index < plan.parts.count ? plan.parts[index].length : 0), \(emitted / Self.sampleRate) s out"
     }
 
     /// The next buffer of output sound, nil at the end.
@@ -179,7 +216,6 @@ final class AudioJoiner: @unchecked Sendable {
         o.audioTimePitchAlgorithm = .spectral
         r.add(o)
         guard r.startReading() else { throw Failure.read(r.error?.localizedDescription ?? "startReading") }
-        if lock.withLock({ canceled }) { r.cancelReading() }
         reader = r; output = o
     }
 
@@ -245,6 +281,49 @@ final class AudioJoiner: @unchecked Sendable {
             packetDescriptions: nil, sampleBufferOut: &buffer)
         guard status == noErr, let buffer else { throw Failure.read("audio buffer (\(status))") }
         emitted += samples.count
+        return buffer
+    }
+}
+
+/// The rendered sound read back as LPCM sample buffers (16-bit mono 48 kHz), 0.1 s at a time. Plain file
+/// reads: no AVAssetReader runs next to the video's (two readers at once stalled under load, see Exporter).
+final class PCMFileSource: @unchecked Sendable {
+    private let handle: FileHandle
+    private let format: CMAudioFormatDescription
+    private var emitted = 0
+
+    init(url: URL) throws {
+        handle = try FileHandle(forReadingFrom: url)
+        var asbd = AudioStreamBasicDescription(mSampleRate: Double(AudioJoiner.sampleRate), mFormatID: kAudioFormatLinearPCM,
+                                               mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
+                                               mBytesPerPacket: 2, mFramesPerPacket: 1, mBytesPerFrame: 2,
+                                               mChannelsPerFrame: 1, mBitsPerChannel: 16, mReserved: 0)
+        var fmt: CMAudioFormatDescription?
+        let status = CMAudioFormatDescriptionCreate(allocator: nil, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0,
+                                                    magicCookie: nil, extensions: nil, formatDescriptionOut: &fmt)
+        guard status == noErr, let fmt else { throw AudioJoiner.Failure.read("audio format (\(status))") }
+        format = fmt
+    }
+
+    deinit { try? handle.close() }
+
+    func next() throws -> CMSampleBuffer? {
+        guard let data = try handle.read(upToCount: AudioJoiner.sampleRate / 10 * 2), data.count >= 2 else { return nil }
+        let count = data.count / 2
+        var block: CMBlockBuffer?
+        var status = CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: count * 2, blockAllocator: nil,
+                                                        customBlockSource: nil, offsetToData: 0, dataLength: count * 2,
+                                                        flags: kCMBlockBufferAssureMemoryNowFlag, blockBufferOut: &block)
+        guard status == noErr, let block else { throw AudioJoiner.Failure.read("audio block (\(status))") }
+        status = data.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: count * 2) }
+        guard status == noErr else { throw AudioJoiner.Failure.read("audio copy (\(status))") }
+        var buffer: CMSampleBuffer?
+        status = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+            allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: count,
+            presentationTimeStamp: CMTime(value: CMTimeValue(emitted), timescale: CMTimeScale(AudioJoiner.sampleRate)),
+            packetDescriptions: nil, sampleBufferOut: &buffer)
+        guard status == noErr, let buffer else { throw AudioJoiner.Failure.read("audio buffer (\(status))") }
+        emitted += count
         return buffer
     }
 }

@@ -54,7 +54,9 @@ export BUBBLE_DIAG="$PWD/.build/debug/bubble-diag"
 export BUBBLE_EDITOR_OUT="$PWD/$OUT/editor/contract-real"
 # A hung test (a stalled writer) must not hang the gate: BUBBLE_TEST_TIMEOUT seconds (default 600).
 # BUBBLE_TEST_ARGS: extra swift test arguments, e.g. "--skip CaptureSessionTests".
-with_timeout() { perl -e 'my $t = shift; my $pid = fork; if (!$pid) { setpgrp; exec @ARGV } local $SIG{ALRM} = sub { kill "TERM", -$pid; print STDERR "\nTIMEOUT after ${t}s\n"; exit 124 }; alarm $t; waitpid $pid, 0; exit($? >> 8 || ($? & 127 ? 128 + ($? & 127) : 0))' "$@"; }
+# scripts/with-timeout.pl kills the whole tree on timeout, swiftpm-testing-helper included (it
+# leaves the process group and would survive as an orphan, burning CPU and holding the next gates).
+with_timeout() { scripts/with-timeout.pl "$@"; }
 # shellcheck disable=SC2086
 step tests tests.log with_timeout "${BUBBLE_TEST_TIMEOUT:-600}" scripts/test.sh ${BUBBLE_TEST_ARGS:-}
 grep -E 'Test run with' "$OUT/tests.log" | tail -1 | sed 's/^/       /' | tee -a "$SUMMARY"

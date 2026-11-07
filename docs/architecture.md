@@ -121,6 +121,11 @@ design.md's "v1 scope" note is the source of truth. Mapped to engineering:
 - `CameraFeed` (capture track) owns an `AVCaptureSession` with the chosen camera, preset 1280×720
   (enough for a 260 pt bubble at 2x). `AVCaptureDevice.wasDisconnectedNotification` →
   `onDisconnected`.
+- Frame watching: an `AVCaptureVideoDataOutput` on the same session only counts frames (start
+  waits for a real frame, a watchdog restarts a stalled session). **Never scale that output**
+  (`videoSettings` with a small width/height): the session then feeds the preview layer from the
+  small stream and the bubble goes blurry (measured: sharpness 8.4 → 1.5). Keep the camera's
+  native pixel format, unscaled; the delegate only bumps a counter.
 - The bubble window (UI track): borderless `NSPanel`, `.nonactivatingPanel`, `level = .floating`,
   `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]`, clear background,
   a layer-backed view with `AVCaptureVideoPreviewLayer(session:)`, `videoGravity = .resizeAspectFill`,

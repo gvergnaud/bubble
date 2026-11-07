@@ -39,6 +39,33 @@ public struct MediaReport: Sendable, Codable, CustomStringConvertible {
     }
 }
 
+/// Runs a blocking AVAssetReader loop on a GCD thread and awaits it, so it never holds one of the
+/// Swift concurrency pool's few threads: with many tests in parallel, synchronous
+/// `copyNextSampleBuffer` loops on the pool starved it and hung the gate.
+public func offPool<T>(_ work: @escaping () throws -> T) async throws -> T {
+    let box = UncheckedBox(work)
+    let result: UncheckedBox<Result<T, Error>> = await withCheckedContinuation { c in
+        DispatchQueue.global(qos: .userInitiated).async {
+            c.resume(returning: UncheckedBox(Result { try box.value() }))
+        }
+    }
+    return try result.value.get()
+}
+
+public func offPool<T>(_ work: @escaping () -> T) async -> T {
+    let box = UncheckedBox(work)
+    let result: UncheckedBox<T> = await withCheckedContinuation { c in
+        DispatchQueue.global(qos: .userInitiated).async { c.resume(returning: UncheckedBox(box.value())) }
+    }
+    return result.value
+}
+
+/// Carries a non-Sendable value across the hop to GCD and back; only one side touches it at a time.
+public final class UncheckedBox<T>: @unchecked Sendable {
+    public let value: T
+    public init(_ value: T) { self.value = value }
+}
+
 public enum MediaProbe {
     public static func inspect(_ url: URL) async -> MediaReport {
         var r = MediaReport(path: url.path, bytes: 0, playable: false, duration: 0, videoTracks: 0, audioTracks: 0,
@@ -59,7 +86,7 @@ public enum MediaProbe {
                 if let desc = try await v.load(.formatDescriptions).first {
                     r.codec = fourCC(CMFormatDescriptionGetMediaSubType(desc))
                 }
-                let (n, last, gap, err) = decodeVideo(asset: asset, track: v)
+                let (n, last, gap, err) = await offPool { decodeVideo(asset: asset, track: v) }
                 r.decodedFrames = n; r.maxFrameGap = gap
                 r.decodedSeconds = n > 0 ? last + 1.0 / 30 : 0
                 if let err { r.errors.append(err) }
@@ -69,7 +96,7 @@ public enum MediaProbe {
                    let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee {
                     r.audioSampleRate = asbd.mSampleRate; r.audioChannels = Int(asbd.mChannelsPerFrame)
                 }
-                let (secs, err) = decodeAudio(asset: asset, track: a)
+                let (secs, err) = await offPool { decodeAudio(asset: asset, track: a) }
                 r.audioSeconds = secs
                 if let err { r.errors.append(err) }
             }
@@ -121,14 +148,16 @@ public enum MediaProbe {
         let out = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
         reader.add(out)
         reader.startReading()
-        var best: CVPixelBuffer?
-        while let sb = out.copyNextSampleBuffer() {
-            let t = CMSampleBufferGetPresentationTimeStamp(sb).seconds
-            if let ib = CMSampleBufferGetImageBuffer(sb) { best = ib }
-            if t >= time - 0.001 { break }
+        return await offPool {
+            var best: CVPixelBuffer?
+            while let sb = out.copyNextSampleBuffer() {
+                let t = CMSampleBufferGetPresentationTimeStamp(sb).seconds
+                if let ib = CMSampleBufferGetImageBuffer(sb) { best = ib }
+                if t >= time - 0.001 { break }
+            }
+            reader.cancelReading()
+            return best
         }
-        reader.cancelReading()
-        return best
     }
 
     /// Decoded mono Float32 samples of the first audio track at 48 kHz.
@@ -141,14 +170,16 @@ public enum MediaProbe {
                                                                          AVLinearPCMIsFloatKey: true, AVLinearPCMIsNonInterleaved: false])
         reader.add(out)
         reader.startReading()
-        var samples: [Float] = []
-        while let sb = out.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(sb) {
-            let len = CMBlockBufferGetDataLength(block)
-            var chunk = [Float](repeating: 0, count: len / 4)
-            chunk.withUnsafeMutableBytes { _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: len, destination: $0.baseAddress!) }
-            samples += chunk
+        return await offPool {
+            var samples: [Float] = []
+            while let sb = out.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(sb) {
+                let len = CMBlockBufferGetDataLength(block)
+                var chunk = [Float](repeating: 0, count: len / 4)
+                chunk.withUnsafeMutableBytes { _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: len, destination: $0.baseAddress!) }
+                samples += chunk
+            }
+            return samples
         }
-        return samples
     }
 
     /// PSNR (dB) of the luma-ish RGB between two BGRA buffers of the same size. ∞ when identical.
