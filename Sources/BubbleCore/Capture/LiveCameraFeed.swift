@@ -55,13 +55,8 @@ public final class LiveCameraFeed: CameraFeed {
     public init() {
         session.sessionPreset = .hd1280x720
         output.alwaysDiscardsLateVideoFrames = true
-        // The output only counts frames. NEVER ask it for a smaller size: a scaled data output makes
-        // the session feed the preview layer from that small stream (measured: a 160x90 output
-        // dropped the bubble's sharpness from 8.4 to 1.5, the user's blurry bubble). The camera's own
-        // pixel format, unscaled, costs no conversion (the buffers are shared IOSurfaces).
-        if let native = output.availableVideoPixelFormatTypes.first {
-            output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: native]
-        }
+        // The output only counts frames: ask for tiny ones so it costs next to nothing.
+        output.videoSettings = [kCVPixelBufferWidthKey as String: 160, kCVPixelBufferHeightKey as String: 90]
         output.setSampleBufferDelegate(frames, queue: frameQueue)
         observeSession()
     }
@@ -338,7 +333,7 @@ private final class FrameCounter: NSObject, AVCaptureVideoDataOutputSampleBuffer
         if first {
             if let format = sampleBuffer.formatDescription {
                 let size = CMVideoFormatDescriptionGetDimensions(format)
-                CaptureLog.info("camera: first frame \(size.width)x\(size.height)")
+                CaptureLog.info("camera: first frame \(size.width)x\(size.height) (counting output)")
             } else {
                 CaptureLog.info("camera: first frame")
             }
