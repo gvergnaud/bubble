@@ -16,7 +16,7 @@ your face in a round bubble at the bottom-left, saved in `~/Movies/Bubble`.
 > the file is saved and opens in the default player. Plus the permissions, disk, crash and
 > device edge cases of section 7. Everything else in this doc (Pause, Restart, Discard,
 > toolbar, mic level, bubble drag/sizes, Saved card, display picker) is **later**, unless the
-> user says yes to it on the page `loom-like-design` (add-on picks); this note lists the yeses
+> user says yes to it on the design review page (add-on picks); this note lists the yeses
 > when they come.
 >
 > **Yeses so far:**

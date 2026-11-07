@@ -4,7 +4,7 @@ Edit a recording by editing its words. A web page served by Bubble's local serve
 in the user's browser, that cuts and speeds up parts of a recording without touching the
 source file, then downloads the edited video.
 
-Reference: the user's capture of Loom's editor, `docs/reference/loom-editor.mov` (29 s).
+Reference: Loom's editor, as a UX comparison.
 Code: `web/editor/` (plain HTML/CSS/JS modules, no CDN, no build step, works offline):
 `index.html`, `editor.css`, `model.js` (the pure edit model), `api.js` (the only module that
 knows the server), `app.js` (the page). Tests: `node --test web/editor/test/model.test.mjs`

@@ -6,7 +6,7 @@ the user's browser, served by Bubble itself on `127.0.0.1`. The source recording
 
 - Page ↔ server contract: **`docs/editor-api.md`** (the source of truth for every request and type).
 - Fixture + mock server (build the page today): `web/fixtures/`, `node web/mock-server.mjs`.
-- Page (designer): `web/editor/`. UX: Loom's editor (`docs/reference/loom-editor.mov`) plus speed ranges.
+- Page (designer): `web/editor/`. UX: compared with Loom's editor, plus speed ranges.
 - Recorder architecture (unchanged): `docs/architecture.md`.
 
 Status: written 2026-11-06 by the architect. Open decision for the user: which transcription

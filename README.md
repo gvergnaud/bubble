@@ -1,6 +1,6 @@
 # Bubble
 
-**An open-source Loom for macOS.** Record your screen with your face in a bubble, then trim it by
+**An open-source alternative to Loom for macOS.** Record your screen with your face in a bubble, then trim it by
 editing the transcript. Free, no account, and everything stays on your Mac.
 
 [![A Bubble recording: a designer walks through a dashboard, her face in the round bubble](media/demo.webp)](media/demo.mp4)
@@ -97,5 +97,8 @@ JS, no build step). Design and architecture notes are in `docs/`.
 ## License and credits
 
 [MIT](LICENSE). Made by [Gabriel Vergnaud](https://github.com/gvergnaud), with a team of AI agents in
-[bise](https://bise.dev). Inspired by [Loom](https://www.loom.com). Transcription by Apple's Speech
-framework and Mistral's [Voxtral](https://mistral.ai).
+[bise](https://bise.dev). Inspired by Loom. Transcription by Apple's Speech framework and Mistral's
+[Voxtral](https://mistral.ai).
+
+<sub>Loom is a trademark of Atlassian. Bubble is an independent project, not affiliated with or
+endorsed by Atlassian or Loom.</sub>

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Bubble's menu bar icon: two bubbles, a big one and a small one at its bottom-left
-/// (option B on the page loom-like-design, the user's pick). Owned by design.
+/// (option B on the design review page, the user's pick). Owned by design.
 ///
 /// - `idle`: a template image, so it follows the menu bar's tint (light, dark, tinted).
 /// - `recording`: the same glyph, the big bubble in system red, the small one in the
