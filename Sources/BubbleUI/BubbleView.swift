@@ -133,12 +133,31 @@ struct CameraPreview: NSViewRepresentable {
         required init?(coder: NSCoder) { fatalError() }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            matchScale()
             logState("camera preview moved to window")
+        }
+
+        // Moved to a display with another scale (a 1x external screen, back to Retina).
+        override func viewDidChangeBackingProperties() {
+            super.viewDidChangeBackingProperties()
+            matchScale()
+            logState("camera preview backing changed")
+        }
+
+        /// A sublayer added by hand keeps contentsScale 1 on a 2x screen: the camera was drawn at
+        /// half resolution and doubled (the blurry face, in the bubble and in the recording).
+        private func matchScale() {
+            let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+            guard previewLayer.contentsScale != scale else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            previewLayer.contentsScale = scale
+            CATransaction.commit()
         }
 
         /// For the black-bubble chase (capture): which layer, in which window, is the session live.
         func logState(_ what: String) {
-            AppLog.info("\(what): layer \(ObjectIdentifier(previewLayer)) in window \(window?.windowNumber ?? 0) visible \(window?.isVisible ?? false), session running \(previewLayer.session?.isRunning ?? false), connection enabled \(previewLayer.connection?.isEnabled ?? false), bounds \(NSStringFromRect(bounds))")
+            AppLog.info("\(what): layer \(ObjectIdentifier(previewLayer)) in window \(window?.windowNumber ?? 0) visible \(window?.isVisible ?? false), session running \(previewLayer.session?.isRunning ?? false), connection enabled \(previewLayer.connection?.isEnabled ?? false), bounds \(NSStringFromRect(bounds)), scale \(previewLayer.contentsScale) (window \(window?.backingScaleFactor ?? 0))")
         }
 
         override func layout() {

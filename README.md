@@ -2,6 +2,10 @@
 
 An open-source, local-first Loom for macOS.
 
+![The Bubble editor: the recording transcribes on its own, two cuts, a slow part at 1.5×, then Download](media/editor.webp)
+
+<sub>The editor on a test recording. [Watch it as mp4](media/editor.mp4).</sub>
+
 Press ⌥⇧L, talk, press it again. You get an `.mp4` of your screen with your face in a round
 bubble, saved in `~/Movies/Bubble` and copied to your clipboard, ready to paste in Slack or a mail.
 Then trim it by editing its words.
