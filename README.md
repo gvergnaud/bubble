@@ -2,9 +2,9 @@
 
 An open-source, local-first Loom for macOS.
 
-![The Bubble editor: the recording transcribes on its own, two cuts, a slow part at 1.5×, then Download](media/editor.webp)
+[![A Bubble recording: a designer walks through a dashboard, her face in the round bubble](media/demo.webp)](media/demo.mp4)
 
-<sub>The editor on a test recording. [Watch it as mp4](media/editor.mp4).</sub>
+<sub>[Watch it as mp4](media/demo.mp4) (56 s, captions, no sound).</sub>
 
 Press ⌥⇧L, talk, press it again. You get an `.mp4` of your screen with your face in a round
 bubble, saved in `~/Movies/Bubble` and copied to your clipboard, ready to paste in Slack or a mail.
@@ -21,6 +21,10 @@ Then trim it by editing its words.
   timeline, then cut it or speed it up. Undo anything. Download the edited video.
 - **Transcription on your Mac or with Voxtral.** On this Mac with Apple's on-device speech
   (macOS 26), or with Mistral's Voxtral if you paste your own API key (better words, speakers).
+
+![The Bubble editor: the recording transcribes on its own, two cuts, a slow part at 1.5×, then Download](media/editor.webp)
+
+<sub>The editor on a test recording. [Watch it as mp4](media/editor.mp4).</sub>
 
 ## Install
 
