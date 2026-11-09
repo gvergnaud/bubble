@@ -68,7 +68,8 @@ function engines() {
   ]
 }
 
-const HOME = '/Users/me'
+// The fake home of the tests and previews, with its slash (the public export's scan allows /Users/me/).
+const HOME = '/Users/me/'
 const sourceFile = (name, folder, dir, extra = {}) => ({ name, folder, path: `${dir}/${name}`, state: 'ok', ...extra })
 const NO_SOUND = "This video has no sound, so there's no transcript."
 
@@ -88,7 +89,7 @@ function reset({ transcript = 'ready', edits = 'fixture', ...rest } = {}) {
   mock = { fronts: 0, opens: 0, revealed: [], deleted: [], dropped: [] }
   opens.clear(); projects.clear()
   project = structuredClone(fixture)
-  project.source = sourceFile('Bubble demo.mp4', 'Movies/Bubble', `${HOME}/Movies/Bubble`)
+  project.source = sourceFile('Bubble demo.mp4', 'Movies/Bubble', `${HOME}Movies/Bubble`)
   if (edits === 'empty') project.edits = { revision: 0, segments: [] }
   const t = project.transcript
   if (transcript !== 'ready') {
@@ -100,7 +101,7 @@ function reset({ transcript = 'ready', edits = 'fixture', ...rest } = {}) {
   let file = DEMO_FILE
   if (rest.video === 'unplayable') {
     file = PRORES_FILE
-    project.source.name = 'Bubble demo.mov'; project.source.path = `${HOME}/Movies/Bubble/Bubble demo.mov`
+    project.source.name = 'Bubble demo.mov'; project.source.path = `${HOME}Movies/Bubble/Bubble demo.mov`
   }
   if (rest.source === 'missing') project.source.state = 'missing'
   if (rest.source === 'offline') {
@@ -110,10 +111,10 @@ function reset({ transcript = 'ready', edits = 'fixture', ...rest } = {}) {
   if (rest.projects !== 'empty') {
     const ago = h => new Date(Date.now() - h * 3600_000).toISOString()
     project.updatedAt = ago(2)
-    makeProject('interview', 'Interview raw', sourceFile('Interview raw.mov', 'Desktop', `${HOME}/Desktop`), { updatedAt: ago(26) })
+    makeProject('interview', 'Interview raw', sourceFile('Interview raw.mov', 'Desktop', `${HOME}Desktop`), { updatedAt: ago(26) })
     makeProject('keynote', 'Keynote rehearsal',
       sourceFile('Keynote rehearsal.mp4', 'T7/Footage', '/Volumes/T7/Footage', { state: 'offline', volume: 'T7' }), { updatedAt: ago(24 * 5) })
-    makeProject('old-take', 'Old take', sourceFile('Old take.mp4', 'Downloads', `${HOME}/Downloads`, { state: 'missing' }), { updatedAt: ago(24 * 30) })
+    makeProject('old-take', 'Old take', sourceFile('Old take.mp4', 'Downloads', `${HOME}Downloads`, { state: 'missing' }), { updatedAt: ago(24 * 30) })
   } else {
     projects.delete('demo')
   }
@@ -214,7 +215,7 @@ function projectForFile(name, folder = 'Desktop') {
   let id = slug(name), n = 2
   while (projects.has(id)) id = `${slug(name)}-${n++}`
   const prores = name.toLowerCase().includes('prores')
-  const p = makeProject(id, name.replace(/\.[^.]*$/, ''), sourceFile(name, folder, `${HOME}/${folder}`), { file: prores ? PRORES_FILE : DEMO_FILE })
+  const p = makeProject(id, name.replace(/\.[^.]*$/, ''), sourceFile(name, folder, `${HOME}${folder}`), { file: prores ? PRORES_FILE : DEMO_FILE })
   if (name.toLowerCase().includes('no-sound')) noSound(p)
   return id
 }
