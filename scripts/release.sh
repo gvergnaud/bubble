@@ -4,12 +4,14 @@
 # Release build (scripts/build-app.sh release), then signed again with the hardened runtime, a secure
 # timestamp and Resources/Bubble.entitlements, which notarization needs. Needs a "Developer ID
 # Application" identity ($BUBBLE_SIGN_IDENTITY, else the first one in the keychain).
-# Notarization: set NOTARY_PROFILE to a notarytool keychain profile, made once with
-#   xcrun notarytool store-credentials bubble-notary --apple-id <you@example.com> --team-id <TEAMID>
-# (it asks for an app-specific password from account.apple.com). Without it, the zip is signed but
-# not notarized: macOS then asks to allow it once in System Settings > Privacy & Security.
+# Notarization: the zip goes to Apple with the notarytool keychain profile $NOTARY_PROFILE (default
+# bubble-notary), made once from an App Store Connect API team key (role Developer):
+#   xcrun notarytool store-credentials bubble-notary --key AuthKey_<KEYID>.p8 --key-id <KEYID> --issuer <ISSUER-UUID>
+# The release fails if Apple rejects it (its log is printed). NOTARY_PROFILE= (empty) skips it: the
+# zip is then signed but not notarized, and macOS asks to allow it once in System Settings.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+NOTARY_PROFILE="${NOTARY_PROFILE-bubble-notary}"
 
 IDENTITY="${BUBBLE_SIGN_IDENTITY:-}"
 if [ -z "$IDENTITY" ]; then
@@ -33,13 +35,25 @@ ZIP="$OUT/Bubble-$VERSION.zip"
 rm -rf "$OUT"; mkdir -p "$OUT"
 ditto -c -k --keepParent "$APP" "$ZIP"
 
-if [ -n "${NOTARY_PROFILE:-}" ]; then
-  xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+if [ -n "$NOTARY_PROFILE" ]; then
+  # Apple scans the zip (a few minutes), then the ticket is stapled into the app so Gatekeeper
+  # accepts it offline too. The zip is made again from the stapled app.
+  RESULT=$(xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait --output-format json)
+  echo "$RESULT"
+  SUBMISSION=$(echo "$RESULT" | plutil -extract id raw -o - - 2>/dev/null || true)
+  STATUS=$(echo "$RESULT" | plutil -extract status raw -o - - 2>/dev/null || true)
+  if [ "$STATUS" != "Accepted" ]; then
+    echo "notarization: status '$STATUS' for submission '$SUBMISSION'. Apple's log:" >&2
+    [ -n "$SUBMISSION" ] && xcrun notarytool log "$SUBMISSION" --keychain-profile "$NOTARY_PROFILE" >&2 || true
+    exit 1
+  fi
   xcrun stapler staple "$APP"
+  xcrun stapler validate "$APP"
+  spctl --assess --type execute -vvv "$APP"
   rm -f "$ZIP"; ditto -c -k --keepParent "$APP" "$ZIP"
-  spctl --assess --type execute -vv "$APP"
   NOTARIZED=yes
 else
+  echo "warning: NOTARY_PROFILE is empty: the zip is signed but not notarized" >&2
   NOTARIZED=no
 fi
 

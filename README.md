@@ -13,8 +13,8 @@ editing the transcript. Free, no account, and everything stays on your Mac.
 
 1. **Download** `Bubble-<version>.zip` from [Releases](https://github.com/gvergnaud/bubble/releases/latest),
    unzip it and drag **Bubble.app** to Applications.
-2. **Open it once.** macOS blocks it the first time (Bubble isn't notarized by Apple yet): go to
-   **System Settings › Privacy & Security**, scroll down and click **Open Anyway**.
+2. **Double-click Bubble.app.** It's signed and notarized by Apple: macOS asks once if you want to
+   open an app downloaded from the internet, click **Open**.
 3. **Allow the permissions** in Bubble's Welcome window: **Screen Recording** (then relaunch Bubble),
    **Camera** and **Microphone**.
 4. **Press ⌥⇧L** to start. You get a 3-2-1, then you're recording. **Press ⌥⇧L again** to stop.
@@ -66,8 +66,9 @@ the macOS Keychain. No analytics, no telemetry, no account. The editor runs on a
 ## FAQ
 
 **macOS says Bubble "can't be opened" or "can't be verified".**
-Bubble is signed but not notarized by Apple yet. Open it once, then click **Open Anyway** in
-**System Settings › Privacy & Security**. Or run `xattr -dr com.apple.quarantine /Applications/Bubble.app`.
+Bubble 0.1.2 and later are notarized by Apple and open with a double-click. Older downloads (0.1.0,
+0.1.1) are signed but not notarized: get the [latest release](https://github.com/gvergnaud/bubble/releases/latest),
+or open it once and click **Open Anyway** in **System Settings › Privacy & Security**.
 
 **Where are my recordings and my edits?**
 Recordings are in `~/Movies/Bubble` (change it in Settings). Edits are saved as you go, next to the
