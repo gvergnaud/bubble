@@ -283,6 +283,34 @@ recordings, transcription on this Mac or with Mistral, a long take.
 - [ ] **8.10 Only this Mac.** `lsof -iTCP:47621 -sTCP:LISTEN` → Bubble listens on `127.0.0.1`
   only. Another device on your network can't open the page.
 
+## 9. Open any video (docs/editor-open-video.md)
+
+The gate fakes Bubble's open panel and its Spotlight lookup; these need the real ones. Use a
+video of your own outside `~/Movies/Bubble` (a phone clip on the Desktop is ideal).
+
+- [ ] **9.1 Open Video… from the page.** On the editor's home (`/`), click **Open Video…**.
+  → Bubble comes forward with its panel (starts in Movies the first time); pick the clip → the
+  browser comes back on its editor. Again: the panel starts in that folder. Cancel → the browser
+  comes back, nothing changes. Click the button while the panel is up → the same panel comes to the front.
+- [ ] **9.2 Drop on the page.** Drag the clip from Finder onto the home page. → "Finding <name> on
+  your Mac…", then its editor (the same project as 9.1). From Downloads or Documents the first
+  time: macOS may ask "Bubble would like to access files in your Downloads folder"; Allow → it
+  opens; Don't Allow → "Bubble couldn't find…" with **Choose it in Bubble…**.
+- [ ] **9.3 From Finder and the Dock.** Right-click the clip > Open With > Bubble → its editor in a
+  new tab. Drop two clips on Bubble's Dock icon → one tab each. Double-clicking a video still opens
+  QuickTime (Bubble is never the default). **File > Open Recent** lists them.
+- [ ] **9.4 Never copied, never written.** Before: `ls -l@ <clip>; shasum -a 256 <clip>`. Open
+  it, cut, download, remove it from the list. After: same size, date, hash, and no new `@` attribute.
+- [ ] **9.5 Moved, renamed, gone.** Rename the clip in Finder, then move it to another folder →
+  reopening it from Recent finds it (same edits). Trash it → the editor says "The video file is
+  missing." with **Locate…**; locate it in the Trash → linked again.
+- [ ] **9.6 A drive.** A clip on a USB drive: open it, eject the drive → home row `on "<drive>",
+  not connected`, the editor says to connect it; plug it back → it plays.
+- [ ] **9.7 Refusals.** Open a `.mkv` or `.webm` (Open With or the panel) → "Bubble can't open
+  .mkv files…" in a Bubble alert (from Finder) or on the page. A ProRes `.mov` in Chrome → "Your
+  browser can't play this video's format", Download still works.
+  Fake files for all §4 cases: `web/fixtures/open-video/` (2 s each).
+
 ---
 
 When something fails: note the check number, what you saw, and attach the file or a screenshot.

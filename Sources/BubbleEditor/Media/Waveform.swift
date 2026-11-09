@@ -17,7 +17,7 @@ public enum Waveform {
     /// memory stays flat whatever the length. Throws on cancellation.
     public static func peaks(of url: URL) async throws -> Data {
         let asset = AVURLAsset(url: url)
-        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        let tracks = await MediaCheck.soundTracks(of: asset)
         guard !tracks.isEmpty else { return Data() }
         let duration = try await asset.load(.duration).seconds
         // The read loop blocks: off the cooperative pool (BlockingRead). The asset and tracks are only

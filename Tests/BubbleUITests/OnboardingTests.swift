@@ -129,6 +129,29 @@ import Testing
         #expect(m.bubble?.cameraUnavailable == true)
     }
 
+    @Test func videoPanelTextsAndStartFolder() throws {
+        let open = VideoPicker.texts(.open)
+        #expect(open.title == "Open Video")
+        #expect(open.message == nil)
+        #expect(open.prompt == "Open")
+        let locate = VideoPicker.texts(.locate(title: "Locate Video", fileName: "Interview raw.mov"))
+        #expect(locate.message == "Where is Interview raw.mov?")
+        let defaults = UserDefaults(suiteName: "OnboardingTests-\(UUID().uuidString)")!
+        let picker = VideoPicker(defaults: defaults)
+        #expect(picker.startFolder.lastPathComponent == "Movies", "Movies the first time")
+        defaults.set(NSTemporaryDirectory(), forKey: "videoPicker.lastFolder")
+        #expect(picker.startFolder.standardizedFileURL == URL(fileURLWithPath: NSTemporaryDirectory()).standardizedFileURL)
+        defaults.set("/nope/gone", forKey: "videoPicker.lastFolder")
+        #expect(picker.startFolder.lastPathComponent == "Movies", "a folder that's gone falls back to Movies")
+    }
+
+    @Test func savedFolderReadsOffTheMainActor() {
+        let defaults = UserDefaults(suiteName: "OnboardingTests-\(UUID().uuidString)")!
+        let settings = Settings(defaults: defaults)
+        settings.folder = URL(fileURLWithPath: "/tmp/Elsewhere", isDirectory: true)
+        #expect(Settings.savedFolder(defaults).path == "/tmp/Elsewhere")
+    }
+
     /// The editor hook (design.md §10): "Edit Last Recording" in the idle menu, greyed with no recording.
     @Test func editLastRecordingOpensTheEditor() {
         final class EditEffects: AppEffects {
@@ -163,6 +186,14 @@ import Testing
         let menu = AppDelegate.mainMenu()
         let titles = menu.items.flatMap { $0.submenu?.items.map(\.title) ?? [] }
         #expect(titles.contains("Edit"), "File › Edit ⌘E opens the editor")
+        // Edit any video (docs/editor-open-video.md §2): ⌘O opens a video, a recording plays with ⌘↓.
+        let file = menu.items.first { $0.title == "File" }?.submenu
+        let open = file?.items.first { $0.title == "Open Video…" }
+        #expect(open?.keyEquivalent == "o")
+        #expect(file?.items.contains { $0.title == "Open Recent" && $0.submenu != nil } == true)
+        let play = file?.items.first { $0.title == "Play" }
+        #expect(play?.keyEquivalent == String(Character(UnicodeScalar(NSDownArrowFunctionKey)!)))
+        #expect(!(file?.items.contains { $0.title == "Open" } ?? true), "Open became Play")
         #expect(titles.contains("Quit Bubble"))
         #expect(titles.contains("Close Window"))
         #expect(titles.contains("Recordings"))

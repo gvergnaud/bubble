@@ -531,7 +531,7 @@ struct Rig {
     @Test func idleMenu() {
         let rig = Rig()
         #expect(rig.model.menu.compactMap { $0.title } == ["Start Recording", "Show Recorder", "Recordings", "Show Last Recording in Finder",
-                                                           "Edit Last Recording", "Open Recordings Folder", "Settings…", "Quit Bubble"])
+                                                           "Edit Last Recording", "Open Video…", "Open Recordings Folder", "Settings…", "Quit Bubble"])
         for title in ["Show Last Recording in Finder", "Edit Last Recording"] {
             let item = rig.model.menu.first { $0.title == title }
             if case .item(_, _, _, let enabled) = item { #expect(!enabled, "\(title): no last recording yet") }

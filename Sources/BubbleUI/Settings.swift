@@ -57,6 +57,12 @@ public final class Settings {
         welcomeDone = defaults.bool(forKey: Key.welcome)
     }
 
+    /// The save folder as stored, readable off the main actor (the editor's server asks at each open).
+    public nonisolated static func savedFolder(_ defaults: UserDefaults = .standard,
+                                               defaultFolder: URL = RecordingFiles.defaultFolder) -> URL {
+        defaults.string(forKey: Key.folder).map { URL(fileURLWithPath: $0, isDirectory: true) } ?? defaultFolder
+    }
+
     private func store<T: Encodable>(_ value: T, _ key: String) {
         defaults.set(try? JSONEncoder().encode(value), forKey: key)
     }

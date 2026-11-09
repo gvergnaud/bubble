@@ -20,6 +20,21 @@ export function projectIdFromLocation(loc = window.location) {
 const send = (method, url, body, extra = {}) =>
   fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body), ...extra }).then(json);
 
+/** Calls that are not about one project: the home page's list and opening videos (editor-open-video.md §6). */
+export const openApi = {
+  /** -> { projects: [{ id, title, duration, editedDuration, posterUrl, updatedAt, file: { name, folder, state, volume? } }] } */
+  projects: () => fetch("/api/projects").then(json),
+  /** Bubble shows its open panel -> 202 { openId } · 409 busy (Bubble re-fronts its panel). */
+  open: () => send("POST", "/api/open", {}),
+  /** -> { state: 'pending' | 'opened' | 'canceled' | 'failed', projectId?, error?, message?, sameBytes? } */
+  openStatus: (openId) => fetch(`/api/open/${encodeURIComponent(openId)}`).then(json),
+  /** A dropped file, proven by hashes -> 200 { projectId } · 404 not_found · 422 unsupported_format | no_video */
+  dropped: (body) => send("POST", "/api/open/dropped", body),
+  locate: (id) => send("POST", `/api/projects/${encodeURIComponent(id)}/locate`, {}),
+  reveal: (id) => send("POST", `/api/projects/${encodeURIComponent(id)}/reveal`, {}),
+  remove: (id) => fetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" }).then(json),
+};
+
 export function createApi(id) {
   const p = `/api/projects/${encodeURIComponent(id)}`;
   return {

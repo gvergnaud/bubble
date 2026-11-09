@@ -164,7 +164,7 @@ the floating bar.
 | Waveform not ready yet (202) | flat placeholder bars; retried every 1 s |
 | Video can't load | the player area says "Bubble can't open this recording." |
 | Video file gone (404 `source_missing`) | the player area says "The video file is missing." / "It was moved or deleted. Put it back where it was to play and download it; your edits are kept."; transcript and edits stay; Download greyed ("The video file is missing") |
-| Transcript stopped because Bubble quit | shown as failed with "Stopped when Bubble quit." and **Retry** |
+| Transcript stopped because Bubble quit | loads as `none`, so opening the project starts it again (auto-transcription): the user just sees the progress state (editor-server, 2026-11-09) |
 | Export fails | the button goes back to Download, a line under it: "Export failed. Try again." |
 
 ## 7. Look
@@ -188,6 +188,45 @@ Speed never un-cuts: setting a speed on a range that holds cut parts keeps them 
   end, rate}] }` (rate 0 = removed; only ranges that differ from 1×).
 - `PUT /api/projects/:id/edits` (autosave), `PATCH /api/projects/:id` (title, speakers),
   `POST /api/projects/:id/export` + polling + download url.
+
+## 8b. Open any video (2026-11-09; flows: `docs/editor-open-video.md`, contract: `docs/editor-api.md` §8)
+
+One page, two routes: `index.html` holds a `<template>` for each and `main.js` picks by path
+(`/` home, `/edit/:id` editor). `open.js` (Open Video…, drop, the notice card) is shared.
+
+- **Home `/`**: header "◉◦ Bubble" + **Open Video…** (primary). A dashed drop zone ("Drop a
+  video here to edit it, or Open Video…" / "MP4, MOV or M4V · it stays where it is, nothing is
+  copied"), taller when there is no project. **Recent**: 96 × 54 poster, title, `length (before
+  edits) · edited 2 h ago · folder` (folder tooltip: the full path); missing / offline rows: an
+  amber ⚠ tile and "Missing" / `on "T7", not connected`. Hover ⋯: **Show in Finder**, **Remove
+  from list…** → dialog "Remove “<title>” from the list?" / "Removes your edits and transcript
+  for this video. The video file stays." [Cancel] [Remove] (red). Bubble offline: a line
+  "Bubble isn't running. Open Bubble to open a video." and both open buttons off.
+- **Editor header**: the "◉◦ Bubble" glyph links home (tooltip "All videos"); **Open Video…**
+  (secondary) before Download.
+- **Open Video…**: the button reads "Choose a video in Bubble…" (dimmed, pulsing icon) and a
+  quiet card says "The file panel is open in Bubble."; pressing again re-fronts the panel; Esc
+  stops waiting in the page; a reloaded tab resumes the wait. Picked → the editor (same tab).
+  Canceled → nothing. Refused → a card with the server's sentence (§4 of the flows doc).
+- **Drop** (home and editor): a blurred overlay with a dashed card: "Drop to edit this video" /
+  "It stays where it is, nothing is copied." · "Drop one video at a time" · "This isn't a video"
+  (grey). On drop: "Finding <name> on your Mac…", after ~1 s "If macOS asks, allow Bubble to
+  read that folder."; not found: "Bubble couldn't find <name> on your Mac." + the Spotlight /
+  Photos line + **Choose it in Bubble…**; `.mkv` and other containers: "Bubble can't open .mkv
+  files. It edits MP4, MOV and M4V videos. Convert it to MP4 first." The page reads 2 × 1 MB
+  and sends only name, size, date and two SHA-256.
+- **Editor, the file's state** (in the player area, centered): missing: "The video file is
+  missing." / "“<name>” was moved or deleted. Locate it to play and download; your edits are
+  kept." + **Locate…** (→ "Choose it in Bubble…" while the panel is up; "This video is a
+  different length, so your edits wouldn't line up."; relinked with other bytes: card "Linked.
+  It isn't the exact same file, check your cuts."). Offline drive: "This video is on “T7”,
+  which isn't connected." / "Connect it to play and download; your edits are kept." Download
+  off in both. Browser can't play (video error, no metadata after 10 s, or no picture size):
+  "Your browser can't play this video's format (ProRes)." / "Try Safari, or convert it to
+  H.264. Cutting, the transcript and Download still work."
+- **No sound**: the transcript panel says "This video has no sound, so there's no transcript."
+  with no Retry and no ⋯.
+- Tests: `web/editor/test/e2e-open.mjs` (30 checks, headless, on the mock's knobs).
 
 ## 9. Left out of v1, and why
 

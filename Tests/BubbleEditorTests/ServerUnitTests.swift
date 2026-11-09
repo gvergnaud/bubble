@@ -146,7 +146,7 @@ private func tempDir() throws -> URL {
         let rec = dir.appendingPathComponent("My demo.mp4")
         try FileManager.default.copyItem(at: fixtureVideo, to: rec)
         let before = try Data(contentsOf: rec)
-        let svc = EditorService(appSupport: dir, webRoot: repo.appendingPathComponent("web/editor"), port: 0)
+        let svc = EditorService(appSupport: dir, webRoot: repo.appendingPathComponent("web/editor"), port: 0, recordingsFolder: { dir })
         defer { svc.stop() }
         let edit = try await svc.editURL(for: rec)
         let port = try #require(svc.port)
@@ -413,5 +413,216 @@ private func tempDir() throws -> URL {
             let t = try JSONDecoder().decode(Project.self, from: data).transcript
             #expect(code == 200 && t.status == .failed && (t.error ?? "").count > 5)
         }
+    }
+}
+
+/// Opening any video (editor-api.md §8): page panel, drop, identity, list, delete. Real copies of
+/// the fixture in temp folders; the panel and Spotlight are fakes.
+@Suite(.serialized) struct OpenAnyVideoTests {
+    final class Calls: @unchecked Sendable {
+        let lock = NSLock()
+        var opened: [URL] = []
+        var fronted = 0
+        func add(_ u: URL) { lock.withLock { opened.append(u) } }
+        func front() { lock.withLock { fronted += 1 } }
+    }
+
+    struct Rig {
+        let svc: EditorService
+        let c: LiveServerTests.Client
+        let dir: URL, movies: URL, elsewhere: URL
+        let calls: Calls
+    }
+
+    /// `pick`: what the fake panel returns (after `delay`).
+    func rig(pick: URL? = nil, delay: Duration = .zero, found: [URL] = []) async throws -> Rig {
+        let dir = try tempDir()
+        let movies = dir.appendingPathComponent("Movies/Bubble"), elsewhere = dir.appendingPathComponent("Desktop")
+        try FileManager.default.createDirectory(at: movies, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        let calls = Calls()
+        let svc = EditorService(appSupport: dir.appendingPathComponent("Support"), webRoot: nil, port: 0,
+                                recordingsFolder: { movies },
+                                pickVideo: { _ in try? await Task.sleep(for: delay); return pick },
+                                bringPanelToFront: { calls.front() },
+                                onOpened: { calls.add($0) },
+                                findFiles: { _, _ in found })
+        let port = try await svc.start()
+        let token = try Auth.load(appSupport: dir.appendingPathComponent("Support")).token
+        return Rig(svc: svc, c: LiveServerTests.Client(base: "http://127.0.0.1:\(port)", cookie: token),
+                   dir: dir, movies: movies, elsewhere: elsewhere, calls: calls)
+    }
+
+    func json(_ d: Data) throws -> [String: Any] { try JSONSerialization.jsonObject(with: d) as! [String: Any] }
+
+    func poll(_ c: LiveServerTests.Client, _ openID: String) async throws -> [String: Any] {
+        for _ in 0..<100 {
+            let (_, d, _) = try await c.call("GET", "/api/open/\(openID)")
+            let s = try json(d)
+            if s["state"] as? String != "pending" { return s }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        return [:]
+    }
+
+    @Test func openVideoFromThePageNeverTouchesAForeignFile() async throws {
+        let dir = try tempDir()
+        let video = dir.appendingPathComponent("Interview raw.mov")
+        try FileManager.default.copyItem(at: fixtureVideo, to: video)
+        let before = try Data(contentsOf: video)
+        let r = try await rig(pick: video)
+        defer { r.svc.stop() }
+        var (code, data, _) = try await r.c.call("POST", "/api/open")
+        #expect(code == 202)
+        let state = try await poll(r.c, try json(data)["openId"] as! String)
+        #expect(state["state"] as? String == "opened")
+        let id = try #require(state["projectId"] as? String)
+        #expect(RecordingIndex.readXattr(video) == nil, "no xattr outside the recordings folder")
+        #expect(try Data(contentsOf: video) == before)
+        #expect(r.calls.opened.map(\.lastPathComponent) == ["Interview raw.mov"])
+        (code, data, _) = try await r.c.call("GET", "/api/projects/\(id)")
+        let source = try json(data)["source"] as! [String: Any]
+        #expect(source["name"] as? String == "Interview raw.mov" && source["state"] as? String == "ok")
+        var res: HTTPURLResponse
+        (code, _, res) = try await r.c.call("GET", "/media/\(id)/source", headers: ["Range": "bytes=0-9"])
+        #expect(code == 206 && res.value(forHTTPHeaderField: "Content-Type") == "video/quicktime")
+        // Same file again (Dock, Open With): same project.
+        #expect(try await r.svc.projectID(for: video) == id)
+    }
+
+    @Test func aSecondOpenWhileThePanelIsUpIsBusy() async throws {
+        let r = try await rig(pick: nil, delay: .milliseconds(400))
+        defer { r.svc.stop() }
+        let (code1, d1, _) = try await r.c.call("POST", "/api/open")
+        let (code2, d2, _) = try await r.c.call("POST", "/api/open")
+        let busy = try json(d2)
+        #expect(code1 == 202 && code2 == 409 && busy["error"] as? String == "busy")
+        #expect(r.calls.fronted == 1)
+        #expect(try await poll(r.c, try json(d1)["openId"] as! String)["state"] as? String == "canceled")
+        let (code3, _, _) = try await r.c.call("GET", "/api/open/nope")
+        #expect(code3 == 404)
+    }
+
+    @Test func noPanelInThisBuildIs501() async throws {
+        let dir = try tempDir()
+        let svc = EditorService(appSupport: dir, webRoot: nil, port: 0)
+        defer { svc.stop() }
+        let port = try await svc.start()
+        let c = LiveServerTests.Client(base: "http://127.0.0.1:\(port)", cookie: try Auth.load(appSupport: dir).token)
+        #expect(try await c.call("POST", "/api/open").0 == 501)
+    }
+
+    @Test func dropFindsTheFileByItsBytes() async throws {
+        let dir = try tempDir()
+        let video = dir.appendingPathComponent("clip.mp4")
+        try FileManager.default.copyItem(at: fixtureVideo, to: video)
+        let other = dir.appendingPathComponent("sub/clip.mp4")   // same name and size, other bytes
+        try FileManager.default.createDirectory(at: other.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var bytes = try Data(contentsOf: fixtureVideo); bytes[bytes.count - 1] ^= 0xFF
+        try bytes.write(to: other)
+        let r = try await rig(found: [other, video])
+        defer { r.svc.stop() }
+        let (size, head, tail) = try VideoFingerprint.hashes(of: video)
+        let body: [String: Any] = ["name": "clip.mp4", "size": size, "lastModified": 0, "head": head, "tail": tail]
+        var (code, data, _) = try await r.c.call("POST", "/api/open/dropped", body: body)
+        #expect(code == 200)
+        let id = try #require(try json(data)["projectId"] as? String)
+        #expect(try await r.svc.projectID(for: video) == id)
+        var wrong = body; wrong["head"] = String(repeating: "0", count: 64)
+        (code, data, _) = try await r.c.call("POST", "/api/open/dropped", body: wrong)
+        let notFound = try json(data)
+        #expect(code == 404 && notFound["error"] as? String == "not_found")
+        wrong["head"] = "../etc/passwd"
+        #expect(try await r.c.call("POST", "/api/open/dropped", body: wrong).0 == 422)
+    }
+
+    @Test func identityFollowsMovesAndSplitsCopies() async throws {
+        let r = try await rig()
+        defer { r.svc.stop() }
+        // A Bubble recording: xattr. Its Finder duplicate carries the xattr but is another project.
+        let rec = r.movies.appendingPathComponent("Bubble take.mp4")
+        try FileManager.default.copyItem(at: fixtureVideo, to: rec)
+        let id = try await r.svc.projectID(for: rec)
+        #expect(RecordingIndex.readXattr(rec) == id)
+        let dup = r.movies.appendingPathComponent("Bubble take copy.mp4")
+        try FileManager.default.copyItem(at: rec, to: dup)
+        #expect(RecordingIndex.readXattr(dup) == id)
+        let dupID = try await r.svc.projectID(for: dup)
+        #expect(dupID != id)
+        // Renamed in place: the bookmark (or the xattr) finds it.
+        let renamed = r.movies.appendingPathComponent("Renamed.mp4")
+        try FileManager.default.moveItem(at: rec, to: renamed)
+        #expect(try await r.svc.projectID(for: renamed) == id)
+        // A foreign file moved to "another drive" (copied, original deleted): the fingerprint.
+        let foreign = r.elsewhere.appendingPathComponent("talk.mp4")
+        try FileManager.default.copyItem(at: fixtureVideo, to: foreign)
+        let fid = try await r.svc.projectID(for: foreign)
+        let moved = r.dir.appendingPathComponent("talk.mp4")
+        try FileManager.default.copyItem(at: foreign, to: moved)
+        // While the original exists, the copy is another project...
+        let copyID = try await r.svc.projectID(for: moved)
+        #expect(copyID != fid)
+        // ...and when a file is copied then its original deleted, the fingerprint relinks it.
+        let away = r.dir.appendingPathComponent("away/talk.mp4")
+        try FileManager.default.createDirectory(at: away.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: foreign, to: away)
+        try FileManager.default.removeItem(at: foreign)
+        let (_, d, _) = try await r.c.call("GET", "/api/projects/\(fid)")
+        let gone = try json(d)
+        #expect((gone["source"] as? [String: Any])?["state"] as? String == "missing")
+        // Two projects share those bytes now (fid gone, copyID at `moved`): fid is the one whose file is gone.
+        #expect(try await r.svc.projectID(for: away) == fid)
+        #expect(RecordingIndex.readXattr(away) == nil)
+    }
+
+    @Test func listAndForget() async throws {
+        let r = try await rig()
+        defer { r.svc.stop() }
+        let v = r.elsewhere.appendingPathComponent("a.mp4")
+        try FileManager.default.copyItem(at: fixtureVideo, to: v)
+        let id = try await r.svc.projectID(for: v)
+        var (code, data, _) = try await r.c.call("GET", "/api/projects")
+        let list = try #require(try json(data)["projects"] as? [[String: Any]])
+        #expect(code == 200 && list.count == 1 && list[0]["id"] as? String == id)
+        #expect((list[0]["file"] as? [String: Any])?["folder"] as? String != nil)
+        (code, _, _) = try await r.c.call("DELETE", "/api/projects/\(id)")
+        #expect(code == 204 && FileManager.default.fileExists(atPath: v.path))
+        (code, _, _) = try await r.c.call("GET", "/api/projects/\(id)")
+        #expect(code == 404)
+        (code, data, _) = try await r.c.call("GET", "/api/projects")
+        let empty = try json(data)
+        #expect((empty["projects"] as? [Any])?.isEmpty == true)
+    }
+
+    @Test func refusesWhatItCannotEdit() async throws {
+        let r = try await rig()
+        defer { r.svc.stop() }
+        let mkv = r.elsewhere.appendingPathComponent("x.mkv")
+        try FileManager.default.copyItem(at: fixtureVideo, to: mkv)
+        await #expect(throws: EditorError.refused(code: "unsupported_format",
+                                                  message: "Bubble can't open .mkv files. It edits MP4, MOV and M4V videos. Convert it to MP4 first.")) {
+            _ = try await r.svc.editURL(for: mkv)
+        }
+    }
+
+    @Test func accentedNamesMatchInBothUnicodeForms() async throws {
+        let nfc = "R\u{E9}sum\u{E9}.mov", nfd = "Re\u{301}sume\u{301}.mov"
+        let q = Spotlight.query(name: nfc, size: 5)
+        #expect(q.contains("\"\(nfc)\"") && q.contains("\"\(nfd)\"") && q.hasSuffix(" && kMDItemFSSize == 5"))
+        #expect(Spotlight.query(name: "plain.mp4", size: 5) == #"kMDItemFSName == "plain.mp4" && kMDItemFSSize == 5"#)
+        // On disk in NFD (as a Finder copy may be), dropped from the browser in NFC.
+        let dir = try tempDir()
+        let video = dir.appendingPathComponent(nfd)
+        try FileManager.default.copyItem(at: fixtureVideo, to: video)
+        let r = try await rig(found: [video])
+        defer { r.svc.stop() }
+        let (size, head, tail) = try VideoFingerprint.hashes(of: video)
+        let (code, data, _) = try await r.c.call("POST", "/api/open/dropped",
+                                                 body: ["name": nfc, "size": size, "lastModified": 0, "head": head, "tail": tail])
+        #expect(code == 200 && (try? json(data))?["projectId"] is String)
+    }
+
+    @Test func spotlightQueryIsEscaped() {
+        #expect(Spotlight.query(name: #"a "b" \c*.mp4"#, size: 12) == #"kMDItemFSName == "a \"b\" \\c\*.mp4" && kMDItemFSSize == 12"#)
     }
 }

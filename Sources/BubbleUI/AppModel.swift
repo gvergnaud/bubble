@@ -158,11 +158,14 @@ public protocol AppEffects: AnyObject {
     func showRecordings()
     /// Opens the editor on `url` in the user's browser (docs/editor-architecture.md §2, design.md §10).
     func editRecording(_ url: URL)
+    /// The open panel, then the editor on the picked video (docs/editor-open-video.md §2 C).
+    func openVideo()
 }
 
 public extension AppEffects {
     func showRecordings() {}
     func editRecording(_ url: URL) {}
+    func openVideo() {}
 }
 
 // MARK: - Model
@@ -278,6 +281,7 @@ public final class AppModel {
         case .cancelCountdown: cancelCountdown()
         case .showLastRecording: if let url = settings.lastRecording { effects.reveal(url) }
         case .editLastRecording: if let url = settings.lastRecording { effects.editRecording(url) }
+        case .openVideo: effects.openVideo()
         case .openFolder: effects.openFolder(settings.folder)
         case .settings: effects.showSettings()
         case .recordings: effects.showRecordings()

@@ -22,6 +22,8 @@ editing the transcript. Free, no account, and everything stays on your Mac.
    in Slack, a mail or a doc.
 6. **Want to trim it?** Click **Edit** in the Recordings window (or **Edit Last Recording** in the menu
    bar). The editor opens in your browser.
+7. **Any other video too.** **File › Open Video…** (⌘O), drop it on Bubble's Dock icon, use Finder's
+   **Open With › Bubble**, or click **Open Video…** (or drop the file) in the editor.
 
 ## Features
 
@@ -38,6 +40,9 @@ editing the transcript. Free, no account, and everything stays on your Mac.
 - 🧠 **Transcription on your Mac or with Voxtral.** Apple's on-device speech (macOS 26), or
   Mistral's Voxtral with your own API key, for better words and speaker names.
 - ⬇️ **Download the edit** as a new `.mp4`. The original stays as it was.
+- 📂 **Edit any video, not only your recordings.** Any MP4, MOV or M4V from any folder or drive. It's
+  edited where it is: never copied, never changed. Moved or renamed later, Bubble finds it again;
+  the editor's home lists your recent videos.
 
 [![The Bubble editor on the Pulse walkthrough: it transcribes on its own, a stumble cut, a slow sentence at 1.5×, then Download](media/editor.webp)](media/editor.mp4)
 
@@ -52,6 +57,7 @@ editing the transcript. Free, no account, and everything stays on your Mac.
 | ⌥⇧C | Discard the take (press twice) |
 | ⌘0 | Open the Recordings window |
 | ⌘E | Edit the selected recording |
+| ⌘O | Open any video in the editor |
 | ⌘, | Settings |
 
 In the editor: **Delete** cuts the selection, **⌘Z** / **⇧⌘Z** undo and redo.

@@ -163,7 +163,7 @@ public struct RecordingsView: View {
                 if list.count == 1, let one = list.first {
                     Button("Edit") { actions.edit(one) }
                 }
-                Button("Open") { actions.open(list) }
+                Button("Play") { actions.open(list) }
                 Button("Show in Finder") { actions.reveal(list) }
                 Button("Copy") { actions.copy(list) }
                 Divider()

@@ -94,8 +94,15 @@ if command -v node >/dev/null; then
   MOCK_PID=$!
   for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$MOCK_PORT/editor/index.html" && break; sleep 0.1; done
   step editor-contract-mock editor-contract-mock.log node web/test/contract.mjs --base "http://127.0.0.1:$MOCK_PORT" --mock --out "$EDITOR_OUT/contract-mock"
+  step editor-open-video-mock editor-open-video-mock.log node web/test/open-video.mjs --base "http://127.0.0.1:$MOCK_PORT" --mock --out "$EDITOR_OUT/open-video-mock"
   if [ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
     step editor-page-mock editor-page-mock.log node web/test/page.mjs --base "http://127.0.0.1:$MOCK_PORT" --mock --out "$EDITOR_OUT/page-mock"
+    # Open any video in the page (docs/editor-open-video.md): designer's flow run (it always exits 0:
+    # its FAIL/ERROR lines decide) and QA's run of what it leaves out (on its own mock).
+    mkdir -p "$EDITOR_OUT/open-mock"
+    step editor-open-page-mock editor-open-page-mock.log sh -c 'BASE="$1" node web/editor/test/e2e-open.mjs "$2" && ! grep -qE "^(FAIL|ERROR)" "$2/e2e-open.txt"' \
+      sh "http://127.0.0.1:$MOCK_PORT" "$EDITOR_OUT/open-mock"
+    step editor-open-page-gaps editor-open-page-gaps.log node web/test/page-open.mjs --out "$EDITOR_OUT/page-open"
   else
     line SKIP editor-page-mock "Google Chrome not installed"
   fi
@@ -103,6 +110,10 @@ if command -v node >/dev/null; then
   if [ -f "$EDITOR_OUT/contract-real/contract.txt" ]; then
     line INFO editor-contract-real "$(tail -1 "$EDITOR_OUT/contract-real/contract.txt") · $EDITOR_OUT/contract-real/"
   fi
+  # Open any video on the real server (run in the tests step: OpenVideoContractTests, OpenVideoPageTests).
+  for r in open-video-real/open-video.txt page-open-real/page-open-real.txt; do
+    [ -f "$EDITOR_OUT/$r" ] && line INFO "editor-$(dirname "$r")" "$(tail -1 "$EDITOR_OUT/$r") · $EDITOR_OUT/$(dirname "$r")/"
+  done
 else
   line SKIP editor "node not installed"
 fi

@@ -61,10 +61,37 @@ public enum Exporter {
         pieces.filter { $0.rate > 0 && $0.end > $0.start }.reduce(0) { $0 + ($1.end - $1.start) / $1.rate }
     }
 
-    /// Frames of the 30 fps output for that duration (at least 1).
-    public static func frameCount(duration: Double) -> Int {
+    /// Frames of the output at `fps` for that duration (at least 1).
+    public static func frameCount(duration: Double, fps: Int32 = Exporter.fps) -> Int {
         max(1, Int((duration * Double(fps)).rounded()))
     }
+
+    /// The output's frame rate (docs/editor-open-video.md §4): the source's snapped to 24/25/30/50/60,
+    /// at most 60; 30 when unknown or under 20 (a screen recording that mostly holds still has few
+    /// close frames to measure its capture rate from; 30 is Bubble's).
+    public static func outputFrameRate(_ source: Double) -> Int32 {
+        guard source.isFinite, source >= 20 else { return fps }
+        return [24, 25, 30, 50, 60].min { abs(Double($0) - source) < abs(Double($1) - source) }!
+    }
+
+    /// Longest side of the output, pixels: bigger videos are scaled down (aspect kept).
+    public static let maxSide = 3840
+
+    /// The encoded size: even, the longest side at most `maxSide`, never scaled up.
+    public static func outputSize(width: Int, height: Int) -> (Int, Int) {
+        let longest = max(width, height)
+        guard longest > maxSide else { return (max(2, width / 2 * 2), max(2, height / 2 * 2)) }
+        let scale = Double(maxSide) / Double(longest)
+        func scaled(_ v: Int) -> Int { v == longest ? maxSide : max(2, Int((Double(v) * scale / 2).rounded()) * 2) }
+        return (scaled(width), scaled(height))
+    }
+
+    /// SDR BT.709: what the export is converted to (an HDR HLG/PQ source is tone-mapped) and tagged.
+    static let rec709: [String: String] = [
+        AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+        AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+        AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+    ]
 
     /// Renders `pieces` of `source` into `destination` (replaced if it exists). The file appears only when
     /// complete (written in `partialFolder(for:)`, then moved). `progress` gets 0...1 from any thread.
@@ -82,11 +109,12 @@ public enum Exporter {
         // doing that on the asset the video reader uses stalled the video read under load (stall report:
         // video stuck in copyNextSampleBuffer, video input ready, audio input waiting on it).
         let audioAsset = AVURLAsset(url: source, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
-        let srcAudio = try await audioAsset.loadTracks(withMediaType: .audio).first
+        let srcAudio = await MediaCheck.soundTracks(of: audioAsset).first   // the first one it can decode
         let sourceDuration = try await asset.load(.duration)
         let audioRange = try await srcAudio?.load(.timeRange)
         let transform = try await srcVideo.load(.preferredTransform)
         let size = try await srcVideo.load(.naturalSize)
+        let rate = outputFrameRate(await MediaCheck.frameRate(of: srcVideo, in: asset))
         try Task.checkCancellation()
 
         // 1. The output timeline: kept pieces back to back, each lasting (end − start) / rate.
@@ -104,12 +132,12 @@ public enum Exporter {
         }
         guard cursor > .zero else { throw Failure.nothingKept }
         let runs = VideoRun.make(pieces: kept, outputStarts: outputStarts)
-        let total = frameCount(duration: cursor.seconds)
-        let end = CMTime(value: CMTimeValue(total), timescale: fps)
-        let width = evenPixels(size.width), height = evenPixels(size.height)
+        let total = frameCount(duration: cursor.seconds, fps: rate)
+        let end = CMTime(value: CMTimeValue(total), timescale: rate)
+        let (width, height) = outputSize(width: Int(abs(size.width).rounded()), height: Int(abs(size.height).rounded()))
 
         // Fail early rather than mid-render when the disk can't take the file.
-        let needed = estimatedBytes(width: width, height: height, duration: cursor.seconds, sound: srcAudio != nil)
+        let needed = estimatedBytes(width: width, height: height, duration: cursor.seconds, sound: srcAudio != nil, fps: rate)
         if let free = bytesFree(destination.deletingLastPathComponent()), free < needed {
             throw Failure.notEnoughSpace(needed: needed)
         }
@@ -156,16 +184,19 @@ public enum Exporter {
         // 3. The video source: decoded frames (420v), one plain reader per run of pieces, one at a time.
         let videoSource = VideoSource(asset: asset, track: srcVideo, runs: runs)
 
-        // 4. Writer: H.264 High at the source's size, AAC 128 kb/s, moov first.
+        // 4. Writer: H.264 High at the source's size (≤ 3840, scaled by the writer), the source's rate
+        // snapped, SDR BT.709 tagged, AAC 128 kb/s, moov first.
         let writer: AVAssetWriter
         do { writer = try AVAssetWriter(outputURL: partial, fileType: .mp4) } catch { throw Failure.writeFailed(error.localizedDescription) }
         let vIn = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
+            AVVideoScalingModeKey: AVVideoScalingModeResize,
+            AVVideoColorPropertiesKey: rec709,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: VideoSettings.bitRate(width: width, height: height, fps: Int(fps)),
+                AVVideoAverageBitRateKey: VideoSettings.bitRate(width: width, height: height, fps: Int(rate)),
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                AVVideoExpectedSourceFrameRateKey: Int(fps),
-                AVVideoMaxKeyFrameIntervalKey: Int(fps) * 2,
+                AVVideoExpectedSourceFrameRateKey: Int(rate),
+                AVVideoMaxKeyFrameIntervalKey: Int(rate) * 2,
             ] as [String: Any],
         ])
         // The source track's rotation, set on the output (frames are read unrotated from the source track;
@@ -196,7 +227,7 @@ public enum Exporter {
 
         // 4. Pump both inputs on their own queues (offline interleaving); cancel stops both.
         let job = RenderJob(writer: writer)
-        let videoPump = VideoPump(input: vIn, adaptor: adaptor, source: videoSource, total: total, job: job,
+        let videoPump = VideoPump(input: vIn, adaptor: adaptor, source: videoSource, total: total, fps: rate, job: job,
                                   progress: { progress(soundShare + (1 - soundShare) * $0) })
         let audioPump = aIn.flatMap { i in sound.map { AudioPump(input: i, source: $0, end: end, job: job) } }
         let inputs = WriterState(writer: writer, video: vIn, audio: aIn)
@@ -249,7 +280,7 @@ public enum Exporter {
 
     /// Size of the export: (video bitrate + 128 kb/s audio) × duration, + 10 % (container, bitrate overshoot).
     /// With `sound`, plus the sound rendered first to a 16-bit file (96 kB/s, deleted at the end).
-    public static func estimatedBytes(width: Int, height: Int, duration: Double, sound: Bool = true) -> Int64 {
+    public static func estimatedBytes(width: Int, height: Int, duration: Double, sound: Bool = true, fps: Int32 = Exporter.fps) -> Int64 {
         let bitsPerSecond = Double(VideoSettings.bitRate(width: width, height: height, fps: Int(fps)) + 128_000)
         let pcm = sound ? Double(AudioJoiner.sampleRate * 2) * max(0, duration) : 0
         return Int64((bitsPerSecond / 8 * max(0, duration) * 1.1 + pcm).rounded(.up))
@@ -274,7 +305,6 @@ public enum Exporter {
         }
     }
 
-    private static func evenPixels(_ v: CGFloat) -> Int { max(2, Int(abs(v).rounded()) / 2 * 2) }
 }
 
 /// Pure: places decoded frames on the 30 fps grid. A frame at output time t goes to slot round(t × 30);
@@ -381,8 +411,11 @@ final class VideoSource: @unchecked Sendable {
         guard !closed, index < runs.count else { return }
         let r: AVAssetReader
         do { r = try AVAssetReader(asset: asset) } catch { throw ReadError(description: error.localizedDescription) }
+        // 8-bit 4:2:0 in SDR BT.709: an HDR (HLG / PQ, BT.2020) source is tone-mapped here; read as is,
+        // its 10-bit BT.2020 values would come out washed out once written as 709.
         let o = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            AVVideoColorPropertiesKey: Exporter.rec709])
         o.alwaysCopiesSampleData = false   // frames that are kept get copied into the writer's pool
         r.add(o)
         let run = runs[index]
@@ -468,10 +501,14 @@ final class VideoPump: @unchecked Sendable {
     private let queue = DispatchQueue(label: "bubble.export.video")
     private(set) var written = 0
 
+    /// Output frames per second (the timescale of the slots).
+    let fps: Int32
+
     init(input: AVAssetWriterInput, adaptor: AVAssetWriterInputPixelBufferAdaptor, source: VideoSource,
-         total: Int, job: RenderJob, progress: @escaping @Sendable (Double) -> Void) {
+         total: Int, fps: Int32, job: RenderJob, progress: @escaping @Sendable (Double) -> Void) {
         self.input = input; self.adaptor = adaptor; self.source = source; self.job = job; self.progress = progress
-        self.slots = FrameSlots(total: total)
+        self.fps = fps
+        self.slots = FrameSlots(total: total, fps: Double(fps))
     }
 
     private let end = PumpEnd()
@@ -503,7 +540,7 @@ final class VideoPump: @unchecked Sendable {
             if pendingIndex < pending.count {
                 let (buffer, slot) = pending[pendingIndex]
                 pendingIndex += 1
-                guard adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(slot), timescale: Exporter.fps)) else {
+                guard adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(slot), timescale: fps)) else {
                     job.fail(.writeFailed(job.writer.error?.localizedDescription ?? "video append"))
                     return true
                 }

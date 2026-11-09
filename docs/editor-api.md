@@ -14,6 +14,9 @@ Built from the designer's draft shape (m_299); the differences from it are marke
   with the right one). Listens on the loopback interface only.
 - Page: `GET /edit/:id` → `web/editor/index.html`; its assets at `/editor/*` (the files of
   `web/editor/`, served as they are). One page, no build step needed.
+- **Δ Home:** `GET /` → the same `index.html` (the page routes on its path: `/` = home, recent
+  videos + Open Video…, `docs/editor-open-video.md` §3F). `/?t=<token>` does the same token
+  exchange as `/edit/:id?t=` and redirects to `/`.
 - **Δ Auth (the page does nothing for it):** Bubble opens `/edit/:id?t=<token>`. The server checks
   the token, sets the cookie `bubble=<token>; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`
   and redirects to `/edit/:id`. After that, every `fetch` and `<video src>` carries the cookie by
@@ -46,6 +49,15 @@ type Project = {
   transcript: Transcript
   edits: Edits
   export: ExportJob | null   // the latest export of this project, if any (§6)
+  source: SourceFile         // Δ where the video file is, and whether it's reachable (§8)
+}
+
+type SourceFile = {
+  name: string               // "Interview raw.mov"
+  folder: string             // display name of its folder: "Desktop", "Movies/Bubble", "T7/Footage"
+  path: string               // full path, for a tooltip only (the page never sends it back)
+  state: 'ok' | 'missing' | 'offline'   // offline = on a volume that isn't connected
+  volume?: string            // with 'offline': the volume's name, "T7"
 }
 
 type Transcript = {
@@ -54,6 +66,7 @@ type Transcript = {
   engine: string | null      // e.g. "voxtral-mini-transcribe-api", "fixture"; shown in a tooltip
   language: string | null    // "en", "fr"...
   error?: string             // when 'failed': a sentence for the user
+  errorCode?: 'no_sound'     // Δ with 'failed': the video has no sound track; no Retry, no engine switch
   speakers: { id: string; name: string }[]     // name defaults to "Speaker 1", "Speaker 2"...
   words: Word[]              // in time order
 }
@@ -188,3 +201,51 @@ waveform and poster when not cached, `POST .../transcription` and `POST .../expo
 
 `video.duration` is the longest track of the file (what `<video>.duration` reports), not
 AVAsset's duration (a few ms shorter).
+
+## 8. Opening any video (Δ 2026-11-09, `docs/editor-open-video.md`)
+
+Rule: **the page never sends a file path.** Paths enter only through Bubble's own UI (its open
+panel, the Dock, Finder's Open With). The drop flow proves the page holds the file's bytes instead.
+
+```ts
+type ProjectSummary = {
+  id: string
+  title: string
+  duration: number            // source seconds
+  editedDuration: number      // after cuts and speed ranges (= duration when no edits)
+  posterUrl: string | null    // null while not made yet or when the file is unreachable
+  updatedAt: string           // ISO 8601, last edit
+  file: SourceFile            // §2
+}
+
+type OpenState = {
+  state: 'pending' | 'opened' | 'canceled' | 'failed'
+  projectId?: string          // with 'opened'
+  sameBytes?: boolean         // with 'opened' after a locate: false = same length, other bytes (relinked)
+  error?: 'unsupported_format' | 'no_video' | 'different_video'   // with 'failed'
+  message?: string            // with 'failed': the sentence to show (editor-open-video.md §4)
+}
+```
+
+| Request | Answer |
+|---|---|
+| `GET /api/projects` | `200 { projects: ProjectSummary[] }`, last edited first |
+| `POST /api/open` (no body) | Bubble shows its open panel. `202 { openId }`; `409 { error: 'busy', message }` when a panel is already up (Bubble brings it to the front) |
+| `GET /api/open/:openId` | `200 OpenState`. Poll every 500 ms while `pending`. `404` for an unknown or expired id (kept 10 min after it ends) |
+| `POST /api/open/dropped` body `{ name, size, lastModified, head, tail }` | `200 { projectId }` · `404 { error: 'not_found', message }` · `422 { error: 'unsupported_format' \| 'no_video', message }` |
+| `POST /api/projects/:id/locate` (no body) | The panel to find a missing file: `202 { openId }` + polling as above; `failed` with `different_video` when the length differs by more than 0.1 s; `opened` with `sameBytes: false` when the length matches but not the fingerprint |
+| `POST /api/projects/:id/reveal` | Show in Finder. `204`; `404 { error: 'source_missing' }` |
+| `DELETE /api/projects/:id` | `204`. Deletes the project (edits, transcript, waveform, poster, exports), **never the video** |
+
+Drop body: `name` (File.name), `size` (bytes), `lastModified` (File.lastModified, ms since 1970),
+`head` / `tail`: lowercase hex SHA-256 of the first and the last 1 MiB (1 048 576 bytes) of the
+file; under 2 MiB, both are the SHA-256 of the whole file. Bubble only opens a file on this Mac
+whose name, size and both hashes match; ties: the copy whose modification date equals
+`lastModified`, else the newest.
+
+`/media/:id/source` sends `Content-Type` by extension: `video/mp4` (`.mp4`, `.m4v`),
+`video/quicktime` (`.mov`).
+
+`Project.source.state` other than `ok`: the editor shows the missing / offline state; media
+routes answer `404 { error: 'source_missing' }` (missing) or `404 { error: 'source_offline' }`
+(on a volume that isn't connected).

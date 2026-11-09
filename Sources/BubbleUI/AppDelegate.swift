@@ -17,6 +17,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     private var welcome: WelcomeWindowController?
     private let hotkeys = Hotkeys()
     private let log = Logger(subsystem: "local.bubble.Bubble", category: "App")
+    /// Videos opened before launch finished (Open With, a drop on the Dock icon of a closed Bubble).
+    private var pendingOpens: [URL]? = []
 
     /// `placeholder`: a still image for the bubble instead of the live camera (BUBBLE_FAKE mode).
     public init(model: AppModel, effects: SystemEffects, placeholder: CGImage? = nil) {
@@ -55,12 +57,37 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         let p = model.permissions
         AppLog.info("launch \(Bundle.main.bundlePath) · screen \(p.status(.screen)) camera \(p.status(.camera)) mic \(p.status(.microphone)) · hotkeys in use: \(model.hotkeysInUse.map(\.rawValue))")
         model.launched()
+        let opens = pendingOpens ?? []
+        pendingOpens = nil
         // Opened by hand (Dock, Finder, Spotlight, open): the Recordings window (design.md §10.1).
         // A login-item launch stays quiet; the first launch shows Welcome, whose Done opens Recordings.
-        if !model.welcomeOpen, !Self.launchedAsLoginItem() {
+        // Launched to open videos: only the editor tabs.
+        if opens.isEmpty, !model.welcomeOpen, !Self.launchedAsLoginItem() {
             effects.showRecordings()
         }
+        openVideos(opens)
     }
+
+    /// Finder's Open With, a drop on the Dock icon, the Dock's recent list
+    /// (docs/editor-open-video.md §2 D/E): one editor tab per file.
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        let files = urls.filter(\.isFileURL)
+        AppLog.info("open \(files.count) file(s) from Finder or the Dock\(pendingOpens != nil ? " (queued until launch)" : "")")
+        if pendingOpens != nil { pendingOpens?.append(contentsOf: files) } else { openVideos(files) }
+    }
+
+    private func openVideos(_ urls: [URL]) {
+        for url in urls { effects.editRecording(url) }
+    }
+
+    @objc func openVideo(_ sender: Any?) { effects.openVideo() }
+
+    @objc func openRecent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        effects.editRecording(url)
+    }
+
+    @objc func clearRecent(_ sender: Any?) { NSDocumentController.shared.clearRecentDocuments(sender) }
 
     /// Clicking the Dock icon or opening Bubble again while it runs: the Recordings window, in
     /// front (also while recording), or Welcome if Screen Recording is still missing.
@@ -168,10 +195,20 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         StatusItemController.applyShortcut(HotkeyAction.startStop.shortcut, to: newRec)
         StatusItemController.applyShortcut(HotkeyAction.pauseResume.shortcut, to: pause)
         StatusItemController.applyShortcut(HotkeyAction.discard.shortcut, to: discard)
+        // ⌘O opens any video in the editor; Open Recent lists the videos opened there
+        // (docs/editor-open-video.md §2 C/E). A recording plays with Play ⌘↓.
+        let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(title: "Open Recent")
+        recentMenu.delegate = RecentVideosMenu.shared
+        recent.submenu = recentMenu
+        let down = String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
         submenu("File", [
             newRec, pause, discard,
             .separator(),
-            item("Open", #selector(RecordingsWindowController.openSelected(_:)), "o"),
+            item("Open Video…", #selector(openVideo(_:)), "o", toApp: true),
+            recent,
+            .separator(),
+            item("Play", #selector(RecordingsWindowController.openSelected(_:)), down),
             item("Edit", #selector(RecordingsWindowController.editSelected(_:)), "e"),
             item("Show in Finder", #selector(RecordingsWindowController.revealSelected(_:)), "r", [.command, .shift]),
             item("Move to Trash", #selector(RecordingsWindowController.trashSelected(_:)), "\u{8}"),
@@ -231,6 +268,33 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
 @MainActor
 private final class Flag { var value = false }
+
+/// File › Open Recent: the videos opened in the editor (NSDocumentController keeps the list, which
+/// also fills the Dock icon's right-click list). Filled each time the menu opens.
+@MainActor
+final class RecentVideosMenu: NSObject, NSMenuDelegate {
+    static let shared = RecentVideosMenu()
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let delegate = NSApplication.shared.delegate
+        let urls = NSDocumentController.shared.recentDocumentURLs
+        for url in urls {
+            let item = NSMenuItem(title: url.lastPathComponent, action: #selector(AppDelegate.openRecent(_:)), keyEquivalent: "")
+            item.target = delegate
+            item.representedObject = url
+            item.toolTip = url.path
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            menu.addItem(item)
+        }
+        if !urls.isEmpty { menu.addItem(.separator()) }
+        let clear = NSMenuItem(title: "Clear Menu", action: urls.isEmpty ? nil : #selector(AppDelegate.clearRecent(_:)), keyEquivalent: "")
+        clear.target = delegate
+        menu.addItem(clear)
+    }
+}
 
 /// The live AppEffects: AppKit alerts, toasts, Finder, the player, SMAppService.
 @MainActor
@@ -310,10 +374,27 @@ public final class SystemEffects: AppEffects {
             } catch {
                 slow.cancel()
                 AppLog.info("edit \(url.lastPathComponent) failed: \(error.localizedDescription)")
-                _ = await present(AppAlert(title: "Bubble couldn't open the editor.",
+                // The same sentence as the page (docs/editor-open-video.md §4), e.g. "Bubble can't
+                // open .mkv files. It edits MP4, MOV and M4V videos. Convert it to MP4 first."
+                _ = await present(AppAlert(title: "Bubble couldn't open “\(url.lastPathComponent)”.",
                                            message: error.localizedDescription, buttons: ["OK"]))
             }
         }
+    }
+
+    /// The open panel (File › Open Video…, the menu bar's Open Video…, the page's Open Video… and Locate).
+    public let picker = VideoPicker()
+
+    /// File › Open Video… ⌘O: the panel, then the editor in the browser. A panel already up comes forward.
+    public func openVideo() {
+        Task { @MainActor in
+            if let url = await picker.pick(.open, giveFocusBack: false) { editRecording(url) }
+        }
+    }
+
+    /// The video opened in the editor goes to File › Open Recent and the Dock's list.
+    public func noteOpened(_ url: URL) {
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
     }
 
     public func setOpenAtLogin(_ on: Bool) -> Bool {

@@ -137,6 +137,16 @@ import Testing
         let missing = await jobs.wait(projectID: "b")
         #expect(missing?.status == .failed)
         #expect(missing?.error == "The recording is missing: it was moved or deleted.")
+        #expect(missing?.errorCode == nil)
+
+        // A video without a sound track: failed, its own code (the page shows no Retry).
+        let silent = dir.appendingPathComponent("silent.mp4")
+        try await SyntheticAV.make(silent, seconds: 1, beeps: [], audio: false)
+        _ = try await jobs.start(projectID: "s", source: silent, engine: "fixture", folder: dir)
+        let noSound = await jobs.wait(projectID: "s")
+        #expect(noSound?.status == .failed)
+        #expect(noSound?.error == "This video has no sound, so there's no transcript.")
+        #expect(noSound?.errorCode == TranscriptionState.noSound)
 
         _ = try await jobs.start(projectID: "c", source: MediaFixtures.demo, engine: "fixture", folder: dir)
         try await Task.sleep(for: .milliseconds(300))

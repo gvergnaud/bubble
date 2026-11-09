@@ -6,7 +6,7 @@ public enum MenuAction: String, Sendable, Equatable {
     case stop, pause, resume, hideCamera, showCamera, discard
     case startNow, cancelCountdown
     case startRecording, showRecorder, recordings
-    case showLastRecording, editLastRecording, openFolder, settings, quit
+    case showLastRecording, editLastRecording, openVideo, openFolder, settings, quit
 }
 
 public enum MenuEntry: Sendable, Equatable {
@@ -36,6 +36,7 @@ public enum MenuBuilder {
                 .separator,
                 .item(title: "Show Last Recording in Finder", shortcut: nil, action: .showLastRecording, enabled: hasLastRecording),
                 .item(title: "Edit Last Recording", shortcut: nil, action: .editLastRecording, enabled: hasLastRecording),
+                .item(title: "Open Video…", shortcut: "⌘O", action: .openVideo, enabled: true),
                 .item(title: "Open Recordings Folder", shortcut: nil, action: .openFolder, enabled: true),
                 .separator,
                 .item(title: "Settings…", shortcut: "⌘,", action: .settings, enabled: true),

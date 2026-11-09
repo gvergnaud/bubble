@@ -67,13 +67,33 @@ func wireEditor(_ effects: SystemEffects, fake: Bool) {
         key = MistralKey()
         engines = TranscriptionEngines.standard(key: key)
     }
-    let editor = EditorService(appSupport: appSupport, webRoot: webRoot, transcribers: engines, mistralKey: key)
+    // "Edit any video" (docs/editor-open-video.md): the save folder read at each open (Settings can
+    // change it), Bubble's open panel for the page's Open Video… and Locate, Finder for its Show in
+    // Finder, Open Recent after every open.
+    let suiteName: String? = fake ? "local.bubble.Bubble.fake" : nil
+    let picker = effects.picker
+    let editor = EditorService(
+        appSupport: appSupport, webRoot: webRoot, transcribers: engines, mistralKey: key,
+        recordingsFolder: { Settings.savedFolder(suiteName.flatMap(UserDefaults.init(suiteName:)) ?? .standard) },
+        pickVideo: { pick in await pickVideo(picker, pick) },
+        bringPanelToFront: { Task { @MainActor in picker.bringToFront() } },
+        onOpened: { url in Task { @MainActor in effects.noteOpened(url) } },
+        revealInFinder: { url in Task { @MainActor in NSWorkspace.shared.activateFileViewerSelecting([url]) } })
     effects.editor = { recording in
         // No page in this build: say so in the alert, never a 404 in the browser.
         guard webRoot != nil else { throw EditorPageMissing() }
         return try await editor.editURL(for: recording)
     }
     effects.stopEditor = { editor.stop() }
+}
+
+/// The page asked for a video (Open Video…, Locate): the panel, then the focus back to the browser.
+@MainActor
+func pickVideo(_ picker: VideoPicker, _ pick: VideoPick) async -> URL? {
+    switch pick.purpose {
+    case .open: await picker.pick(.open, giveFocusBack: true)
+    case .locate(let title, let fileName): await picker.pick(.locate(title: title, fileName: fileName), giveFocusBack: true)
+    }
 }
 
 /// A folder of the app's Resources (copied by build-app.sh); a bare `swift run` has no bundle, so it

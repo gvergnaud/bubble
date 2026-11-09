@@ -3,7 +3,8 @@ import {
   applyRate, normalize, rateAt, sourceToEdited, editedToSource, editedDuration, playableFrom,
   describeRange, paragraphs, wordsIn, wordAt, formatTime, formatRate, RATES,
 } from "./model.js";
-import { createApi, projectIdFromLocation } from "./api.js";
+import { createApi, projectIdFromLocation, openApi } from "./api.js";
+import { wireOpenButton, wireDrop, createPanelRequest, notice } from "./open.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -86,29 +87,35 @@ async function boot() {
 
   $("title").textContent = S.title;
   document.title = `${S.title} · Bubble editor`;
-  if (p.video.posterUrl) video.poster = p.video.posterUrl;
-  video.src = p.video.url;
   video.preservesPitch = true;
+  const sourceState = p.source?.state || "ok";
+  if (sourceState !== "ok") {
+    // Missing or on a drive that isn't connected (docs/editor-open-video.md §4): no <video> at all.
+    showSourceState(sourceState, p);
+  } else {
+    if (p.video.posterUrl) video.poster = p.video.posterUrl;
+    video.src = p.video.url;
+    // The browser may not play what Bubble can read (ProRes in Chrome…): no metadata after 10 s.
+    const slow = setTimeout(() => { if (!video.readyState) diagnoseVideo(p); }, 10000);
+    video.addEventListener("loadedmetadata", () => {
+      clearTimeout(slow);
+      // Chrome reads a ProRes .mov's tracks but can't decode the picture: no video size.
+      if (!video.videoWidth) diagnoseVideo(p);
+    }, { once: true });
+    video.addEventListener("error", () => { clearTimeout(slow); diagnoseVideo(p); });
+  }
   loadWaveform();
   if (t.status === "queued" || t.status === "running") pollTranscript();
   video.addEventListener("loadedmetadata", () => {
     if (!S.duration) S.duration = video.duration;
     paintAll();
   });
-  video.addEventListener("error", async () => {
-    // A 404 source_missing means the file was moved or deleted (docs/editor-api.md §7).
-    let missing = false;
-    try {
-      const r = await fetch(p.video.url, { headers: { range: "bytes=0-0" } });
-      missing = r.status === 404 && (await r.json().catch(() => ({}))).error === "source_missing";
-    } catch { /* Bubble not running: the status says so */ }
-    const ph = el("div", "placeholder");
-    ph.append(el("p", "lead", missing ? "The video file is missing." : "Bubble can't open this recording."));
-    if (missing) ph.append(el("p", null, "It was moved or deleted. Put it back where it was to play and download it; your edits are kept."));
-    video.replaceWith(ph);
-    S.sourceMissing = missing;
-    setStatus();
-  });
+  const linked = sessionStorage.getItem(`bubble-linked:${projectId}`);
+  if (linked) {
+    sessionStorage.removeItem(`bubble-linked:${projectId}`);
+    notice({ title: "Linked. It isn't the exact same file, check your cuts." });
+  }
+  wireOpening();
   await loadEngines();
   renderTranscript(t);
   wire();
@@ -116,6 +123,70 @@ async function boot() {
   paintAll();
   setStatus();
   requestAnimationFrame(tick);
+}
+
+// ---------- the video file's state (docs/editor-open-video.md §4) ----------
+/** Why the <video> didn't load: missing / offline (the media route says so) or a format the browser can't play. */
+async function diagnoseVideo(p) {
+  if (S.sourceState && S.sourceState !== "ok") return;
+  let code = null;
+  try {
+    const r = await fetch(p.video.url, { headers: { range: "bytes=0-0" } });
+    if (r.status === 404) code = (await r.json().catch(() => ({}))).error;
+  } catch { return; } // Bubble not running: the save status says so
+  if (code === "source_missing") showSourceState("missing", p);
+  else if (code === "source_offline") showSourceState("offline", p);
+  else showSourceState("cantplay", p);
+}
+
+function showSourceState(kind, p) {
+  S.sourceState = kind;
+  S.sourceMissing = kind === "missing" || kind === "offline";
+  const ph = el("div", "placeholder source-state");
+  const src = p.source || {};
+  if (kind === "missing") {
+    ph.append(el("p", "lead", "The video file is missing."));
+    ph.append(el("p", null, `${src.name ? `“${src.name}” was` : "It was"} moved or deleted. Locate it to play and download; your edits are kept.`));
+    const row = el("div", "row");
+    const btn = el("button", "btn", "Locate…");
+    btn.title = "Find the video in Bubble's file panel";
+    const msg = el("p", "msg");
+    const req = createPanelRequest({
+      key: `bubble-locate:${projectId}`,
+      start: () => openApi.locate(projectId),
+      onState(state, detail) {
+        btn.textContent = state === "waiting" ? "Choose it in Bubble…" : "Locate…";
+        msg.textContent = state === "waiting" ? "The file panel is open in Bubble." : state === "failed" ? detail : "";
+        msg.classList.toggle("bad", state === "failed");
+        if (state === "opened") {
+          if (detail.sameBytes === false) sessionStorage.setItem(`bubble-linked:${projectId}`, "1");
+          location.reload();
+        }
+      },
+    });
+    btn.onclick = () => req.go();
+    row.append(btn);
+    ph.append(row, msg);
+    req.resume();
+  } else if (kind === "offline") {
+    ph.append(el("p", "lead", `This video is on “${src.volume || "a drive"}”, which isn't connected.`));
+    ph.append(el("p", null, "Connect it to play and download; your edits are kept."));
+  } else {
+    const codec = p.video?.codec ? ` (${p.video.codec})` : "";
+    ph.append(el("p", "lead", `Your browser can't play this video's format${codec}.`));
+    ph.append(el("p", null, "Try Safari, or convert it to H.264. Cutting, the transcript and Download still work."));
+  }
+  if (src.path || src.folder) ph.title = src.path || src.folder;
+  (document.getElementById("video") || document.querySelector(".source-state"))?.replaceWith(ph);
+  setStatus();
+}
+
+// Open Video… in the header and dropping a video on the page open another video in this tab.
+let openReq = null;
+function wireOpening() {
+  const go = (id) => { if (id === projectId) location.reload(); else location.href = `/edit/${encodeURIComponent(id)}`; };
+  openReq = wireOpenButton($("openVideo"), { onOpened: go });
+  wireDrop({ enabled: () => S.save !== "offline", onOpened: go, chooseInBubble: () => openReq.go() });
 }
 
 async function loadWaveform() {
@@ -282,7 +353,12 @@ function setStatus() {
   $("redo").disabled = !S.future.length;
   const dl = $("download");
   dl.disabled = S.save === "offline" || S.exporting != null || S.sourceMissing;
-  dl.title = S.sourceMissing ? "The video file is missing" : S.save === "offline" ? "Open Bubble to download" : "Download the edited video";
+  dl.title = S.sourceState === "offline" ? "The video's drive isn't connected" : S.sourceMissing ? "The video file is missing" : S.save === "offline" ? "Open Bubble to download" : "Download the edited video";
+  const ov = $("openVideo");
+  if (ov) {
+    ov.disabled = S.save === "offline";
+    ov.title = S.save === "offline" ? "Open Bubble to open a video" : "Open another video (dropping one on the page works too)";
+  }
   dl.querySelector("span").textContent = S.exporting != null ? `Exporting ${Math.round(S.exporting * 100)}%` : "Download";
 }
 function showConflict() {
@@ -395,7 +471,7 @@ function paintTranscriptHead(t) {
   const e = engineById(t.engine);
   $("engineName").textContent = t.status === "ready" && e ? engineLabel(e) : "";
   $("engineName").title = e ? where(e) : "";
-  $("tmenu").hidden = !(t.status === "ready" || t.status === "failed");
+  $("tmenu").hidden = !(t.status === "ready" || (t.status === "failed" && t.errorCode !== "no_sound"));
 }
 
 function renderProgress(box, t) {
@@ -423,6 +499,14 @@ function renderProgress(box, t) {
 }
 
 function renderFailed(box, t) {
+  if (t.errorCode === "no_sound") {
+    // Nothing to retry and no engine to switch to (docs/editor-open-video.md §4).
+    const quiet = el("div", "tstate");
+    quiet.append(el("h3", null, "This video has no sound, so there's no transcript."));
+    quiet.append(el("p", "hint", "You can still cut and speed up on the timeline."));
+    box.append(quiet);
+    return;
+  }
   const wrap = el("div", "tstate fail");
   wrap.append(el("h3", null, "The transcript didn't work."));
   if (t.error) wrap.append(el("p", "sub", t.error));

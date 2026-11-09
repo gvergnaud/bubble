@@ -1,6 +1,7 @@
 // Owner: E2 (transcription). docs/editor-architecture.md §5: the transcription queue. One job at a time:
 // AudioExtract → engine → Words.post → onUpdate (editor-server stores it with ProjectStore.setTranscript).
 // The engine's raw answer is kept in <project>/transcript-raw/<engine>.json.
+import AVFoundation
 import Foundation
 
 /// What docs/editor-api.md's `Transcript` is made from (editor-server maps it).
@@ -13,14 +14,19 @@ public struct TranscriptionState: Sendable, Equatable {
     public var language: String?
     /// A sentence for the user, when `.failed`.
     public var error: String?
+    /// A failure the page treats on its own (no Retry, no engine switch): `no_sound`.
+    public var errorCode: String?
     public var speakers: [TranscriptSpeaker]
     public var words: [TranscriptWord]
 
     public init(status: Status, progress: Double = 0, engine: String? = nil, language: String? = nil, error: String? = nil,
-                speakers: [TranscriptSpeaker] = [], words: [TranscriptWord] = []) {
+                errorCode: String? = nil, speakers: [TranscriptSpeaker] = [], words: [TranscriptWord] = []) {
         self.status = status; self.progress = progress; self.engine = engine; self.language = language
-        self.error = error; self.speakers = speakers; self.words = words
+        self.error = error; self.errorCode = errorCode; self.speakers = speakers; self.words = words
     }
+
+    /// `errorCode` of a source without a sound track (docs/editor-open-video.md §4).
+    public static let noSound = "no_sound"
 
     /// Status `.none` (no transcript). Not named `none`: `states[id] = .none` would delete the entry.
     public static let empty = TranscriptionState(status: .none)
@@ -81,12 +87,29 @@ public actor TranscriptionJobs {
                       language: String? = nil, duration: Double? = nil) async throws -> TranscriptionState {
         let chosen = try await pick(engine)
         cancel(projectID: projectID, notify: false)
+        // No sound track: failed at once (milliseconds), never queued behind other videos' jobs.
+        if await Self.hasNoSound(source) {
+            let failed = TranscriptionState(status: .failed, engine: chosen.id, error: AudioExtract.Failure.noAudio.description,
+                                            errorCode: TranscriptionState.noSound)
+            states[projectID] = failed
+            await onUpdate(projectID, failed)
+            return failed
+        }
         let state = TranscriptionState(status: .queued, engine: chosen.id)
         states[projectID] = state
         queue.append(Job(projectID: projectID, source: source, engine: chosen, folder: folder, language: language, duration: duration))
         await onUpdate(projectID, state)
         startNext()
         return state
+    }
+
+    /// A readable file without a sound track it can decode (a missing or unreadable one is the job's to
+    /// report).
+    static func hasNoSound(_ source: URL) async -> Bool {
+        let asset = AVURLAsset(url: source)
+        guard FileManager.default.fileExists(atPath: source.path),
+              let tracks = try? await asset.load(.tracks), !tracks.isEmpty else { return false }
+        return await MediaCheck.soundTracks(of: asset).isEmpty
     }
 
     /// Name of the extracted audio in a project folder while a job runs (deleted on every exit).
@@ -173,7 +196,8 @@ public actor TranscriptionJobs {
             // cancel() already set the state.
         } catch {
             if Task.isCancelled { return }
-            await finish(pid, TranscriptionState(status: .failed, engine: engineID, error: Self.message(for: error)))
+            let code = (error as? AudioExtract.Failure) == .noAudio ? TranscriptionState.noSound : nil
+            await finish(pid, TranscriptionState(status: .failed, engine: engineID, error: Self.message(for: error), errorCode: code))
         }
     }
 

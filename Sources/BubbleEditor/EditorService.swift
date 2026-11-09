@@ -12,6 +12,8 @@ public final class EditorService: Sendable {
     let webRoot: URL?
     let preferredPort: UInt16
     let media: EditorMedia
+    let app: AppHooks
+    let opener: Opener
     private let lifecycle = Lifecycle()
 
     /// - appSupport: `~/Library/Application Support/Bubble` (a temp folder in tests).
@@ -19,14 +21,29 @@ public final class EditorService: Sendable {
     /// - port: 47621 by default (the next free one if taken); 0 = any free port (tests).
     /// - transcribers: the engines, in the order the page lists them (the first available is the default).
     /// - media: replaces E2's media + jobs (tests).
+    /// - recordingsFolder: Bubble's save folder, read at each open (Settings can change it): files
+    ///   inside it are Bubble's own recordings (tagged with an xattr); others never are.
+    /// - pickVideo: the app's open panel (activate, NSOpenPanel, give the focus back); nil on cancel.
+    ///   nil closure: the page's "Open Video…" and "Locate" answer 501.
+    /// - bringPanelToFront: called when a second pick is asked while the panel is up.
+    /// - onOpened: after every successful open, by any path (Open Recent).
     public init(appSupport: URL, webRoot: URL?, port: UInt16 = BubbleEditor.defaultPort,
-                transcribers: [any Transcriber] = [], mistralKey: MistralKey? = nil, probe: VideoProbe = AVVideoProbe(), media: EditorMedia? = nil) {
+                transcribers: [any Transcriber] = [], mistralKey: MistralKey? = nil, probe: VideoProbe = AVVideoProbe(), media: EditorMedia? = nil,
+                recordingsFolder: (@Sendable () -> URL)? = nil,
+                pickVideo: (@Sendable (VideoPick) async -> URL?)? = nil,
+                bringPanelToFront: (@Sendable () -> Void)? = nil,
+                onOpened: (@Sendable (URL) -> Void)? = nil,
+                revealInFinder: (@Sendable (URL) -> Void)? = nil,
+                findFiles: (@Sendable (_ name: String, _ size: Int64) async -> [URL])? = nil) {
         self.appSupport = appSupport
         self.webRoot = webRoot
         self.preferredPort = port
+        self.app = AppHooks(recordingsFolder: recordingsFolder, pickVideo: pickVideo,
+                            bringPanelToFront: bringPanelToFront, onOpened: onOpened, revealInFinder: revealInFinder)
         let store = ProjectStore(appSupport: appSupport, probe: probe)
         self.store = store
         self.media = media ?? LiveMedia(store: store, transcribers: transcribers, mistralKey: mistralKey)
+        self.opener = Opener(store: store, app: app, findFiles: findFiles)
     }
 
     /// Starts the server if it is not running (idempotent, safe to call concurrently). Returns the port.
@@ -37,7 +54,7 @@ public final class EditorService: Sendable {
             // Crash leftovers (work audio, half renders, exports older than 24 h), before any job runs.
             TranscriptionJobs.sweepLeftovers(projectsFolder: store.projectsFolder)
             ExportJobs.sweepLeftovers(projectsFolder: store.projectsFolder)
-            let router = Router(auth: auth, files: StaticFiles(root: webRoot), store: store, media: media)
+            let router = Router(auth: auth, files: StaticFiles(root: webRoot), store: store, media: media, opener: opener)
             let server = HTTPServer(handler: { await router.handle($0) })
             let port = try await server.start(port: preferredPort)
             if preferredPort != 0, port != preferredPort {
@@ -52,7 +69,7 @@ public final class EditorService: Sendable {
     /// recording's project. Throws a LocalizedError with a short message.
     public func editURL(for recording: URL) async throws -> URL {
         let port = try await start()
-        let project = try await store.open(recording: recording)
+        let project = try await opener.open(recording)
         guard let token = lifecycle.token,
               let url = URL(string: "http://127.0.0.1:\(port)\(EditorURLs.edit(project.id))?t=\(token)") else {
             throw EditorError.failed("The editor did not start.")
@@ -61,13 +78,34 @@ public final class EditorService: Sendable {
     }
 
     /// The project id of a recording (created on first call). For tests and the app's own lookups.
-    public func projectID(for recording: URL) async throws -> String { try await store.open(recording: recording).id }
+    public func projectID(for recording: URL) async throws -> String { try await opener.open(recording).id }
 
     /// The running server's port, nil when stopped.
     public var port: UInt16? { lifecycle.port }
 
     /// Stops the server (at quit). Safe if never started; a later `editURL` starts it again.
     public func stop() { lifecycle.stop() }
+}
+
+/// What the app's open panel is asked for.
+public struct VideoPick: Sendable, Equatable {
+    public enum Purpose: Sendable, Equatable {
+        /// "Open Video…" from the page.
+        case open
+        /// The project's video is missing: "Where is <fileName>?", `title` as the panel's title.
+        case locate(title: String, fileName: String)
+    }
+    public var purpose: Purpose
+    public init(purpose: Purpose) { self.purpose = purpose }
+}
+
+/// The app's closures (BubbleUI wires them in main.swift; nil in tests and headless runs).
+struct AppHooks: Sendable {
+    var recordingsFolder: (@Sendable () -> URL)?
+    var pickVideo: (@Sendable (VideoPick) async -> URL?)?
+    var bringPanelToFront: (@Sendable () -> Void)?
+    var onOpened: (@Sendable (URL) -> Void)?
+    var revealInFinder: (@Sendable (URL) -> Void)?
 }
 
 /// Start once, even when several callers race; stop from any thread.
@@ -171,6 +209,11 @@ final class LiveMedia: EditorMedia {
         return await engines()
     }
 
+    func forget(projectID: String) async {
+        await transcription.cancel(projectID: projectID)
+        if let job = await exports.latest(projectID: projectID), job.status == .queued || job.status == .running { _ = await exports.cancel(job.id) }
+    }
+
     func exportFile(id: String) async -> (file: URL, filename: String)? {
         guard let s = await exports.job(id), s.status == .done, let file = s.file else { return nil }
         return (file, s.filename)
@@ -185,7 +228,7 @@ final class LiveMedia: EditorMedia {
 
     static func transcript(_ s: TranscriptionState) -> Transcript {
         Transcript(status: Transcript.Status(rawValue: s.status.rawValue) ?? .failed, progress: s.progress, engine: s.engine,
-                   language: s.language, error: s.error,
+                   language: s.language, error: s.error, errorCode: s.errorCode,
                    speakers: s.speakers.map { Speaker(id: $0.id, name: $0.name) },
                    words: s.words.map { Word(start: $0.start, end: $0.end, text: $0.text, speaker: $0.speaker, filler: $0.filler,
                                               approximate: $0.approximate) })

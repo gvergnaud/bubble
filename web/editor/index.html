@@ -5,15 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bubble editor</title>
 <link rel="stylesheet" href="/editor/editor.css">
-<script type="module" src="/editor/app.js"></script>
+<script type="module" src="/editor/main.js"></script>
 </head>
 <body>
+<!-- One page for both routes (docs/editor-api.md §1): main.js picks the template by path. -->
+<!-- /edit/:id : the editor (docs/editor-design.md) -->
+<template id="tpl-editor">
 <div class="app">
   <header class="top">
-    <div class="brand" title="Bubble">
+    <a class="brand" href="/" title="All videos">
       <svg viewBox="0 0 17 17" aria-hidden="true"><circle cx="10" cy="7" r="6.75" fill="currentColor"/><circle cx="3.5" cy="13.5" r="4.25" fill="var(--bg)"/><circle cx="3.5" cy="13.5" r="2.75" fill="currentColor"/></svg>
       Bubble
-    </div>
+    </a>
     <div class="sep"></div>
     <div class="title" id="title" contenteditable="plaintext-only" spellcheck="false" title="Rename">Loading…</div>
     <div class="spacer"></div>
@@ -23,6 +26,10 @@
     </button>
     <button class="icon-btn" id="redo" title="Redo ⇧⌘Z" disabled>
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4.5 16.5 8 13 11.5"/><path d="M16.5 8h-8a4.5 4.5 0 0 0 0 9H11"/></svg>
+    </button>
+    <button class="btn" id="openVideo" title="Open another video (drop one on the page works too)">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5V15a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 17 15V8a1.5 1.5 0 0 0-1.5-1.5H10L8.5 4.5h-4A1.5 1.5 0 0 0 3 6Z"/></svg>
+      <span>Open Video…</span>
     </button>
     <button class="btn primary" id="download" title="Download the edited video">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10"/><path d="m5.5 8.5 4.5 4.5 4.5-4.5"/><path d="M4 16.5h12"/></svg>
@@ -70,5 +77,33 @@
     <div class="track-wrap"><canvas id="track" tabindex="0" aria-label="Timeline"></canvas></div>
   </section>
 </div>
+</template>
+
+<!-- / : the home page (docs/editor-open-video.md §3 F) -->
+<template id="tpl-home">
+<header class="top">
+  <a class="brand" href="/" title="All videos">
+    <svg viewBox="0 0 17 17" aria-hidden="true"><circle cx="10" cy="7" r="6.75" fill="currentColor"/><circle cx="3.5" cy="13.5" r="4.25" fill="var(--bg)"/><circle cx="3.5" cy="13.5" r="2.75" fill="currentColor"/></svg>
+    Bubble
+  </a>
+  <div class="spacer"></div>
+  <span class="status offline" id="offline" hidden>Bubble isn't running. Open Bubble to open a video.</span>
+  <button class="btn primary" id="openVideo" title="Choose a video on your Mac">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5V15a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 17 15V8a1.5 1.5 0 0 0-1.5-1.5H10L8.5 4.5h-4A1.5 1.5 0 0 0 3 6Z"/></svg>
+    <span>Open Video…</span>
+  </button>
+</header>
+<main class="home">
+  <section class="dropzone" id="dropzone">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="14" height="14" rx="3"/><path d="m17 10 4-2.5v9L17 14"/></svg>
+    <p class="dz-title">Drop a video here to edit it, or <button class="link" id="openVideo2">Open Video…</button></p>
+    <p class="dz-sub">MP4, MOV or M4V · it stays where it is, nothing is copied</p>
+  </section>
+  <section class="recent" id="recent" hidden>
+    <h2>Recent</h2>
+    <ol class="rows" id="rows"></ol>
+  </section>
+</main>
+</template>
 </body>
 </html>

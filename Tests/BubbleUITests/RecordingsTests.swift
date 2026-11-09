@@ -122,7 +122,12 @@ import VideoToolbox
         if m.contains(.option) { s += "⌥" }
         if m.contains(.shift) { s += "⇧" }
         if m.contains(.command) { s += "⌘" }
-        let key = item.keyEquivalent == "\u{8}" ? "⌫" : item.keyEquivalent.uppercased()
+        let down = String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
+        let key = switch item.keyEquivalent {
+        case "\u{8}": "⌫"
+        case down: "↓"
+        default: item.keyEquivalent.uppercased()
+        }
         return s + key
     }
 }

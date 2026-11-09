@@ -8,6 +8,7 @@ public final class Router: Sendable {
     let files: StaticFiles
     let store: ProjectStore
     let media: EditorMedia
+    let opener: Opener
     /// Waveforms being computed, by project id (a second request answers 202 without restarting it).
     private let waveformTasks = Mutex<[String: Task<Data, Error>]>([:])
     /// Projects whose auto-transcription is being started (two GETs at once start it once).
@@ -15,8 +16,10 @@ public final class Router: Sendable {
     /// How long GET /waveform waits for a first computation before answering 202.
     let waveformWait: Duration
 
-    public init(auth: Auth, files: StaticFiles, store: ProjectStore, media: EditorMedia, waveformWait: Duration = .milliseconds(1500)) {
+    init(auth: Auth, files: StaticFiles, store: ProjectStore, media: EditorMedia, opener: Opener? = nil,
+         waveformWait: Duration = .milliseconds(1500)) {
         self.auth = auth; self.files = files; self.store = store; self.media = media; self.waveformWait = waveformWait
+        self.opener = opener ?? Opener(store: store, app: AppHooks(), findFiles: { _, _ in [] })
     }
 
     public func handle(_ req: HTTPRequest) async -> HTTPResponse {
@@ -26,12 +29,13 @@ public final class Router: Sendable {
         let path = req.path
         let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)   // ["", "api", ...]
 
-        // Page and assets: public. /edit/:id?t=<token> sets the cookie and redirects.
-        if parts.count == 3, parts[1] == "edit", ProjectStore.isValidID(parts[2]) {
+        // Page (home `/` and `/edit/:id`) and assets: public. `?t=<token>` sets the cookie and redirects.
+        let isHome = path == "/"
+        if isHome || (parts.count == 3 && parts[1] == "edit" && ProjectStore.isValidID(parts[2])) {
             guard req.method == "GET" || req.method == "HEAD" else { return Self.methodNotAllowed }
             if auth.tokenValid(req.query["t"]) {
-                return HTTPResponse(status: 302, headers: [("Location", EditorURLs.edit(parts[2])), ("Set-Cookie", auth.setCookie),
-                                                           ("Cache-Control", "no-store")])
+                return HTTPResponse(status: 302, headers: [("Location", isHome ? "/" : EditorURLs.edit(parts[2])),
+                                                           ("Set-Cookie", auth.setCookie), ("Cache-Control", "no-store")])
             }
             return files.page(req)
         }
@@ -77,13 +81,30 @@ public final class Router: Sendable {
                 return Self.methodNotAllowed
             }
 
+        case (3, "api") where p[2] == "projects":
+            guard m == "GET" else { return Self.methodNotAllowed }
+            return Self.json(200, ProjectList(projects: try await summaries()))
+
+        case (3, "api") where p[2] == "open":
+            guard m == "POST" else { return Self.methodNotAllowed }
+            return Self.json(202, ["openId": try opener.startPick(.open)])
+
+        case (4, "api") where p[2] == "open" && p[3] == "dropped":
+            guard m == "POST" else { return Self.methodNotAllowed }
+            return try await dropped(req)
+
+        case (4, "api") where p[2] == "open":
+            guard m == "GET" else { return Self.methodNotAllowed }
+            guard let state = opener.state(p[3]) else { throw EditorError.notFound("No such open request (they are kept 10 minutes).") }
+            return Self.json(200, state)
+
         case (4, "media"):
             guard m == "GET" || m == "HEAD" else { return Self.methodNotAllowed }
             let id = p[2]
             switch p[3] {
             case "source":
                 let url = try await store.source(id)
-                return StaticFiles.file(url, req, type: "video/mp4", headers: [("Cache-Control", "no-cache")])
+                return StaticFiles.file(url, req, type: Self.videoType(url), headers: [("Cache-Control", "no-cache")])
             case "poster.jpg":
                 return StaticFiles.file(try await poster(id), req, type: "image/jpeg", headers: [("Cache-Control", "no-cache")])
             default: return Self.noRoute
@@ -120,7 +141,21 @@ public final class Router: Sendable {
         case ("", "GET"):
             var stored = stored
             if stored.transcript.status == .none, let t = await autoTranscribe(id) { stored.transcript = t }
-            return Self.json(200, stored.api(export: await media.latestExport(projectID: id)))
+            return Self.json(200, stored.api(export: await media.latestExport(projectID: id), source: try await store.sourceFile(id).info))
+
+        case ("", "DELETE"):
+            await media.forget(projectID: id)
+            try await store.remove(id)
+            return HTTPResponse(status: 204, headers: [("Cache-Control", "no-store")])
+
+        case ("locate", "POST"):
+            let name = URL(fileURLWithPath: stored.recordingPath).lastPathComponent
+            return Self.json(202, ["openId": try opener.startPick(.locate(title: stored.title, fileName: name), locate: id)])
+
+        case ("reveal", "POST"):
+            guard let reveal = opener.app.revealInFinder else { throw EditorError.notAvailable("Show in Finder needs the Bubble app.") }
+            reveal(try await store.source(id))
+            return HTTPResponse(status: 204, headers: [("Cache-Control", "no-store")])
 
         case ("", "PATCH"):
             guard let body = Self.object(req.body) else { throw EditorError.invalid("Body is not JSON.") }
@@ -130,7 +165,7 @@ public final class Router: Sendable {
                 return Speaker(id: sid, name: name)
             }
             let p = try await store.update(id, title: title, speakers: speakers)
-            return Self.json(200, p.api(export: await media.latestExport(projectID: id)))
+            return Self.json(200, p.api(export: await media.latestExport(projectID: id), source: try await store.sourceFile(id).info))
 
         case ("edits", "PUT"):
             guard let body = Self.object(req.body), let revision = Self.integer(body["revision"]) else {
@@ -163,11 +198,45 @@ public final class Router: Sendable {
                                                                 folder: store.folder(id).appendingPathComponent("exports", isDirectory: true)))
             return Self.json(202, job)
 
-        case ("", _), ("edits", _), ("waveform", _), ("transcription", _), ("export", _):
+        case ("", _), ("edits", _), ("waveform", _), ("transcription", _), ("export", _), ("locate", _), ("reveal", _):
             return Self.methodNotAllowed
         default:
             return Self.noRoute
         }
+    }
+
+    // MARK: open any video (editor-api.md §8)
+
+    private func summaries() async throws -> [ProjectSummary] {
+        var out: [ProjectSummary] = []
+        for p in await store.allProjects() {
+            guard let file = try? await store.sourceFile(p.id).info else { continue }
+            let cached = FileManager.default.fileExists(atPath: store.folder(p.id).appendingPathComponent("poster.jpg").path)
+            let edited = (EditPlan.outputDuration(duration: p.video.duration, segments: p.edits.segments) * 1000).rounded() / 1000
+            out.append(ProjectSummary(id: p.id, title: p.title, duration: p.video.duration, editedDuration: edited,
+                                      posterUrl: cached || file.state == .ok ? EditorURLs.poster(p.id) : nil,
+                                      updatedAt: p.updatedAt, file: file))
+        }
+        return out
+    }
+
+    private func dropped(_ req: HTTPRequest) async throws -> HTTPResponse {
+        guard let b = Self.object(req.body), let name = b["name"] as? String, !name.isEmpty, !name.contains("/"),
+              let size = Self.number(b["size"]), size > 0, size == size.rounded(),
+              let lastModified = Self.number(b["lastModified"]),
+              let head = b["head"] as? String, let tail = b["tail"] as? String,
+              Opener.isSHA256Hex(head), Opener.isSHA256Hex(tail) else {
+            throw EditorError.invalid("Needs { name, size, lastModified, head, tail } (lowercase hex SHA-256).")
+        }
+        let d = Opener.Dropped(name: name, size: Int64(size), lastModified: lastModified, head: head, tail: tail)
+        guard let url = await opener.findDropped(d) else {
+            return Self.error(404, "not_found", "Bubble couldn't find \(name) on your Mac.")
+        }
+        return Self.json(200, ["projectId": try await opener.open(url).id])
+    }
+
+    static func videoType(_ url: URL) -> String {
+        url.pathExtension.lowercased() == "mov" ? "video/quicktime" : "video/mp4"
     }
 
     // MARK: auto-transcription (editor-api.md §5: no Transcribe button)
@@ -300,6 +369,10 @@ public final class Router: Sendable {
         case .failed(let m): error(500, "failed", m)
         case .invalidKey(let m): error(422, "invalid_key", m)
         case .unreachable(let m): error(502, "unreachable", m)
+        case .sourceOffline: error(404, "source_offline", e.errorDescription ?? "")
+        case .refused(let code, let m): error(422, code, m)
+        case .busy: error(409, "busy", e.errorDescription ?? "")
+        case .notAvailable(let m): error(501, "not_available", m)
         }
     }
 

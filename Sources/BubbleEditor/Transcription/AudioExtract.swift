@@ -15,7 +15,7 @@ public enum AudioExtract {
         public var description: String {
             switch self {
             case .sourceMissing: "The recording is missing: it was moved or deleted."
-            case .noAudio: "The recording has no sound to transcribe."
+            case .noAudio: "This video has no sound, so there's no transcript."
             case .readFailed(let m): "Could not read the recording's sound: \(m)"
             }
         }
@@ -33,7 +33,7 @@ public enum AudioExtract {
     public static func wav(from source: URL, to destination: URL) async throws -> Output {
         guard FileManager.default.fileExists(atPath: source.path) else { throw Failure.sourceMissing }
         let asset = AVURLAsset(url: source)
-        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        let tracks = await MediaCheck.soundTracks(of: asset)
         guard !tracks.isEmpty else { throw Failure.noAudio }
         var firstStart = Double.infinity
         for t in tracks { firstStart = min(firstStart, try await t.load(.timeRange).start.seconds) }

@@ -129,7 +129,17 @@ engine (§5). Everything else is decided here.
      video's, the video read stalled under load (1 run in 4 with 4 exports at once). Cost of the
      whole pipeline as it is now (sound pass + plain video readers, same 10 min source): no cut
      39.5 s, 200 cuts 39.4 s (1.00×), butt-spliced 39.9 s: about 1 s more than before for the sound pass.
-  3. **Resample video to 30 fps CFR**: compute each frame's output slot (`round(t × 30)`), skip a
+  2b. **Videos Bubble didn't record** (docs/editor-open-video.md §4). Opened only when `MediaCheck`
+     passes (AVFoundation reads it, a video track, `isDecodable`; else `unsupported_format` /
+     `no_video` with its sentence). The output's rate is the source's (median interval of its first
+     600 frames under 0.1 s apart, else its nominal rate) snapped to 24/25/30/50/60, at most 60, and 30
+     under 20 fps (a mostly still screen recording has too few close frames to tell). Longest side
+     above 3840 px: scaled down by the writer (`outputSize`, even). Rotation: the writer's transform
+     is the source track's. Colour: the reader converts to SDR BT.709 and the writer tags it, so an
+     HLG/PQ BT.2020 source is tone-mapped (on qa's HLG fixture mean Y 121.2 → 117.1, chroma 131.9 →
+     134.0; with no conversion it kept its HDR tags in an 8-bit H.264). Sound: the first audio track.
+     A source with no sound track: its transcript fails at once with `errorCode: no_sound`.
+  3. **Resample video to the output rate (CFR)**: compute each frame's output slot (`round(t × fps)`), skip a
      frame whose slot is already written (speed-ups), repeat the previous frame for an empty slot
      (slow-downs). Without it, sped-up parts give duplicate timestamps (spike: ffmpeg flags
      non-monotonic DTS in the 1.5× range).
