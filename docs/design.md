@@ -737,6 +737,38 @@ rest of the screen shouldn't be in the video.
 Segments: **Full screen**, **Window**, **Area**. Buttons: **Change…**, **Use This Area**,
 **Cancel**. Menu bar menu while recording a window: the title line "Recording <App>" above Stop.
 
+### 11.6 What am I recording? One rule for every way in (2026-11-11, the user's ask)
+
+Rule: **every button that starts a recording says what it records, and the source is one
+click away.** The source is the last one used (first time: Full screen). A start never falls
+back to another source by itself: if the last window is closed or no area is saved for that
+display, the start opens the picker / area overlay first.
+
+| Way in | What it shows | One click |
+|---|---|---|
+| **Recordings window** header | a split button: main part **● Record Full Screen** / **● Record Safari** (the window's app; tooltip: the window title) / **● Record Area**; a ▾ part with a menu: **Full Screen**, **Window…**, **Area…** (current one checked) | main part: the 3-2-1 with that source (or its picker / overlay first if it's gone); a menu item: switch source and start |
+| **⌥⇧L** | nothing before the countdown (it's the fast path) | last source, §11.1 rule |
+| **Menu bar icon** (click) | the Recorder panel, its source control first (unchanged) | Start Recording |
+| **Menu bar menu** (idle) and **Dock menu** | three items: **Record Full Screen**, **Record Window…**, **Record Area…**; the last-used one shows ⌥⇧L | the item starts with that source (Window… / Area… open the picker / overlay first, unless the last window / area is still valid for the last-used item) |
+| **File menu** | the same three items in place of "New Recording", ⌥⇧L on the last-used one | same |
+
+**The countdown says it too** (the safety net for ⌥⇧L and every other start): under the big
+digit, one line: "Full screen" (with 2+ displays: "Full screen · <display>"), "Safari — <window
+title>", or "Area · 1280 × 720". For a window, its frame gets a 3 pt blue outline during the
+3-2-1; for an area, the corner brackets show from the first digit. Esc cancels, as today.
+None of it is recorded.
+
+Words: **Record Full Screen**, **Record Safari** (the app's name), **Record Area**,
+**Record Window…**, **Record Area…** (with "…" when a picker or overlay comes first).
+
+Menus, precisely (review of app-ui's build, 2026-11-11): an item with "…" always opens the
+picker / overlay; an item without starts at once. So the menu bar, Dock and File menus show:
+**Record Full Screen**; **Record <App>** (only while the last-used window is still open:
+records it at once); **Record Window…** (always the picker); **Record Area** when an area is
+saved for the display with the mouse (records it at once) else **Record Area…**. ⌥⇧L sits on
+the item that does exactly what ⌥⇧L does (the last source, direct). The Recordings window's
+empty state uses the same split button as the header, centered, instead of a plain button.
+
 ---
 
 ## 9. Words (UI copy)

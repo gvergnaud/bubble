@@ -41,6 +41,12 @@ import Testing
         }
 
         func settle() async { for _ in 0..<20 { await Task.yield() } }
+
+        /// ⌥⇧L during the take, then wait for the save to finish.
+        func stopTake() async {
+            model.hotkey(.startStop)
+            for _ in 0..<200 where model.phase != .idle { try? await Task.sleep(for: .milliseconds(10)) }
+        }
     }
 
     @Test func pickingAWindowFillsTheRowAndPutsTheBubbleInside() async {
@@ -184,6 +190,89 @@ import Testing
         #expect(rig.model.areaOverlay?.startsRecording == true)
     }
 
+    // §11.6: every start says what it records; Window… / Area… pick first.
+
+    @Test func recordFullScreenStartsAtOnce() async {
+        let rig = Rig()
+        rig.settings.source = .area
+        rig.model.record(.fullScreen)
+        await rig.settle()
+        #expect(rig.recorder.lastOptions?.source == .display)
+        #expect(rig.settings.source == .fullScreen, "it becomes the last-used source")
+    }
+
+    @Test func recordWindowPicksFirstThenStarts() async {
+        let rig = Rig()
+        rig.model.record(.window)
+        await rig.settle()
+        #expect(rig.picker.pickCount == 1)
+        #expect(rig.recorder.lastOptions?.source == .window(FakeWindowPicker.sampleWindow.id))
+        #expect(rig.model.recordTitle == "Record Safari")
+        await rig.stopTake()
+        // Last-used and still there: the main part records it again without the picker.
+        rig.model.record(nil)
+        await rig.settle()
+        #expect(rig.picker.pickCount == 1)
+    }
+
+    @Test func recordAreaOpensTheOverlayThatStarts() {
+        let rig = Rig()
+        rig.model.record(.area)
+        #expect(rig.model.areaOverlay?.startsRecording == true)
+        #expect(rig.recorder.lastOptions == nil)
+    }
+
+    @Test func menusOfferTheThreeWaysWithTheShortcutOnTheLastOne() {
+        let rig = Rig()
+        rig.settings.source = .area
+        let items = rig.model.menu.prefix(3).map { entry -> (String?, String?) in
+            if case .item(let t, let s, _, _) = entry { return (t, s) }
+            return (nil, nil)
+        }
+        #expect(items.map(\.0) == ["Record Full Screen", "Record Window…", "Record Area…"])
+        #expect(items.map(\.1) == [nil, nil, HotkeyAction.startStop.shortcut])
+    }
+
+    @Test func theEllipsisMeansThePickerComesFirst() async {
+        let rig = Rig()
+        rig.model.record(.window) // pick Safari, take, stop
+        await rig.settle()
+        await rig.stopTake()
+        let titles = rig.model.menu.prefix(4).compactMap { entry -> String? in
+            if case .item(let t, let s, _, _) = entry { return s.map { "\(t) \($0)" } ?? t }
+            return nil
+        }
+        let key = HotkeyAction.startStop.shortcut
+        #expect(titles == ["Record Full Screen", "Record Safari \(key)", "Record Window…", "Record Area…"])
+        // Record Window… always opens the picker, even with Safari still open.
+        rig.model.perform(.recordWindow)
+        await rig.settle()
+        #expect(rig.picker.pickCount == 2)
+    }
+
+    @Test func countdownSaysWhatItRecords() async {
+        let rig = Rig()
+        rig.settings.countdownEnabled = true
+        rig.model.record(.fullScreen)
+        await rig.settle()
+        #expect(rig.model.countdownSourceLine == "Full screen")
+        rig.model.cancelCountdown()
+        rig.model.openPanel()
+        rig.model.selectSource(.window)
+        await rig.settle()
+        rig.model.startFromPanel()
+        await rig.settle()
+        #expect(rig.model.countdownSourceLine == "Safari — \(FakeWindowPicker.sampleWindow.title)")
+        #expect(rig.model.countdownWindowFrame == FakeWindowPicker.sampleWindow.frame)
+        // Let the canceled countdown (real 1 s sleeps) unwind before the model goes away: freeing
+        // the model right after a cancel segfaulted the test process at teardown (bisected to the
+        // dealloc). Under AddressSanitizer the same run passes and names nothing (architect m_926:
+        // timeboxed look, keep the wait). The app's model lives as long as the app.
+        rig.model.cancelCountdown()
+        try? await Task.sleep(for: .milliseconds(1200))
+        withExtendedLifetime(rig) {}
+    }
+
     @Test func bubbleStepsDownOrLeavesInSmallFrames() {
         let big = CGRect(x: 0, y: 0, width: 1280, height: 800)
         #expect(AppModel.bubbleSize(fitting: big, preferred: .large) == .large)
@@ -288,6 +377,93 @@ import Testing
     @Test func cornerBrackets() {
         Snap.render("area-brackets", size: CGSize(width: 720, height: 420), backdrop: .desktop) {
             CornerBracketsView(size: CGSize(width: 640, height: 360))
+        }
+    }
+
+    // §11.6 snapshots.
+
+    @Test func recordingsSplitButton() {
+        func state(_ kind: SourceKind, _ title: String) -> RecordingsState {
+            var s = RecordingsSnapshots.state()
+            s.source = kind
+            s.recordTitle = title
+            return s
+        }
+        for (name, kind, title) in [("full-screen", SourceKind.fullScreen, "Record Full Screen"),
+                                    ("window", .window, "Record Safari"), ("area", .area, "Record Area")] {
+            Snap.render("recordings-record-\(name)", size: CGSize(width: 720, height: 520)) {
+                RecordingsView(state: state(kind, title), selection: .constant([]), icon: RecordingsSnapshots.icon)
+            }
+        }
+        // The ▾ menu, as a mock (a real NSMenu doesn't render offscreen).
+        Snap.render("recordings-record-menu", backdrop: .none) {
+            MenuMock(rows: [
+                .init(id: 0, title: "✓ Full Screen", shortcut: nil, enabled: true, label: false),
+                .init(id: 1, title: "   Window…", shortcut: nil, enabled: true, label: false),
+                .init(id: 2, title: "   Area…", shortcut: nil, enabled: true, label: false),
+            ])
+        }
+    }
+
+    static func rows(_ entries: [MenuEntry]) -> [MenuMock.Row] {
+        entries.enumerated().map { i, e in
+            switch e {
+            case .item(let t, let s, _, let enabled): MenuMock.Row(id: i, title: t, shortcut: s, enabled: enabled, label: false)
+            case .label(let t): MenuMock.Row(id: i, title: t, shortcut: nil, enabled: false, label: true)
+            case .separator: MenuMock.Row(id: i, title: nil, shortcut: nil, enabled: true, label: false)
+            }
+        }
+    }
+
+    /// The menu bar idle menu and the File menu for: last = full screen, last = Safari (still open),
+    /// last = area saved (design.md §11.6: "…" = picker / overlay first, ⌥⇧L on what it does).
+    @Test func recordMenusByLastSource() {
+        let contexts: [(String, MenuBuilder.RecordContext)] = [
+            ("last-full-screen", .init(lastSource: .fullScreen, openWindowApp: "Safari", areaSaved: true)),
+            ("last-safari", .init(lastSource: .window, openWindowApp: "Safari", areaSaved: false)),
+            ("last-area", .init(lastSource: .area, openWindowApp: nil, areaSaved: true)),
+        ]
+        for (name, ctx) in contexts {
+            Snap.render("menu-idle-record-\(name)", backdrop: .none) {
+                MenuMock(rows: Self.rows(MenuBuilder.menu(phase: .idle, cameraAvailable: true, cameraHidden: false,
+                                                          hasLastRecording: true, record: ctx)))
+            }
+            // The File menu as AppDelegate.validateMenuItem fills it in.
+            let file: [MenuEntry] = MenuBuilder.recordItems(ctx) + [
+                .item(title: "Pause", shortcut: HotkeyAction.pauseResume.shortcut, action: .pause, enabled: false),
+                .item(title: "Discard…", shortcut: HotkeyAction.discard.shortcut, action: .discard, enabled: false),
+                .separator,
+                .item(title: "Open Video…", shortcut: "⌘O", action: .openVideo, enabled: true),
+                .item(title: "Open Recent", shortcut: "▸", action: .openVideo, enabled: true),
+                .separator,
+                .item(title: "Play", shortcut: "⌘↓", action: .openFolder, enabled: false),
+                .item(title: "Edit", shortcut: "⌘E", action: .openFolder, enabled: false),
+                .item(title: "Show in Finder", shortcut: "⇧⌘R", action: .openFolder, enabled: false),
+                .item(title: "Move to Trash", shortcut: "⌘⌫", action: .openFolder, enabled: false),
+                .separator,
+                .item(title: "Open Recordings Folder", shortcut: nil, action: .openFolder, enabled: true),
+                .item(title: "Close Window", shortcut: "⌘W", action: .openFolder, enabled: true),
+            ]
+            Snap.render("main-menu-file-\(name)", backdrop: .none) { MenuMock(rows: Self.rows(file)) }
+        }
+    }
+
+    @Test func countdownWithItsSource() {
+        for (name, line) in [("full-screen", "Full screen"), ("full-screen-2-displays", "Full screen · Studio Display"),
+                             ("window", "Safari — Pull request #42 · gvergnaud/bubble"), ("area", "Area · 1280 × 720")] {
+            Snap.render("countdown-source-\(name)", backdrop: .desktop) { CountdownView(digit: 3, source: line) }
+        }
+        Snap.render("countdown-window-outline", size: CGSize(width: 760, height: 480), backdrop: .desktop) {
+            ZStack {
+                WindowOutlineView(size: CGSize(width: 646, height: 406))
+                CountdownView(digit: 2, source: "Safari — Pull request #42 · gvergnaud/bubble").scaleEffect(0.8)
+            }
+        }
+        Snap.render("countdown-area-brackets", size: CGSize(width: 760, height: 480), backdrop: .desktop) {
+            ZStack {
+                CornerBracketsView(size: CGSize(width: 648, height: 368))
+                CountdownView(digit: 1, source: "Area · 640 × 360").scaleEffect(0.8)
+            }
         }
     }
 

@@ -39,7 +39,7 @@ final class CountdownWindowController {
         }
         let resuming: Bool = if case .resumeCountdown = model.phase { true } else { false }
         withAnimation(.spring(duration: 0.3)) {
-            host.rootView = CountdownView(digit: digit, resuming: resuming)
+            host.rootView = CountdownView(digit: digit, resuming: resuming, source: model.countdownSourceLine)
         }
         let screen = NSScreen.with(displayID: display.id)?.frame ?? display.frame
         let size = CountdownView.windowSize

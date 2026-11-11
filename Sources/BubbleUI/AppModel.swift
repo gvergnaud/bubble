@@ -299,7 +299,8 @@ public final class AppModel {
     public var menu: [MenuEntry] {
         MenuBuilder.menu(phase: phase, cameraAvailable: bubble != nil, cameraHidden: cameraHidden,
                          hasLastRecording: settings.lastRecording != nil,
-                         recordingApp: phase.isInTake ? recordedWindow?.appName : nil)
+                         recordingApp: phase.isInTake ? recordedWindow?.appName : nil,
+                         record: phase == .idle || phase == .ready ? recordContext : MenuBuilder.RecordContext())
     }
 
     public func perform(_ action: MenuAction) {
@@ -312,6 +313,10 @@ public final class AppModel {
         case .discard: Task { await discardWithConfirmation() }
         case .startNow: skipCountdown()
         case .startRecording: hotkey(.startStop)
+        case .recordFullScreen: record(.fullScreen)
+        case .recordWindow: record(.window)
+        case .recordLastWindow: recordLastWindow()
+        case .recordArea: record(.area)
         case .showRecorder: openPanel()
         case .cancelCountdown: cancelCountdown()
         case .showLastRecording: if let url = settings.lastRecording { effects.reveal(url) }
@@ -449,7 +454,8 @@ public final class AppModel {
         }
     }
 
-    private func pickWindow() {
+    /// `thenStart`: Record Window… (menus, Recordings window) starts the take once a window is picked.
+    private func pickWindow(thenStart: Bool = false) {
         guard let windowPicker, !isPickingWindow else { return }
         isPickingWindow = true
         Task {
@@ -463,7 +469,87 @@ public final class AppModel {
                 settings.source = sourceBeforePick == .window ? .fullScreen : sourceBeforePick
             }
             fitBubbleToSource()
+            if thenStart, picked != nil, phase == .idle || phase == .ready { beginTake() }
         }
+    }
+
+    /// Record Full Screen / Record Window… / Record Area… (menu bar menu, Dock, File menu, the
+    /// Recordings window's split button; design.md §11.6): switch to that source and start. Window…
+    /// and Area… open the picker / overlay first, unless the last window / area is still valid and
+    /// was the last-used source. `nil`: the last-used source (the split button's main part).
+    public func record(_ kind: SourceKind?) {
+        guard phase == .idle || phase == .ready else { return }
+        if phase == .idle { selectedDisplayID = devices.displayWithMouse()?.id ?? devices.displays().first?.id }
+        sourceBeforePick = settings.source
+        switch kind {
+        case nil:
+            // The split button's main part: what ⌥⇧L would do.
+            if settings.source == .window { recordLastWindow() } else { record(settings.source) }
+        case .fullScreen?:
+            settings.source = .fullScreen
+            beginTake()
+        case .window?:
+            // Record Window…: always the picker first.
+            guard windowSourceAvailable else { return }
+            settings.source = .window
+            pickWindow(thenStart: true)
+        case .area?:
+            // Record Area starts at once with a saved area; Record Area… draws one first.
+            settings.source = .area
+            if areaSavedUnderMouse { beginTake() } else { showAreaOverlay(startsRecording: true) }
+        }
+    }
+
+    /// Record Safari: the last-used window, at once while it's open; gone: the picker.
+    public func recordLastWindow() {
+        guard phase == .idle || phase == .ready, windowSourceAvailable else { return }
+        sourceBeforePick = settings.source
+        settings.source = .window
+        if lastWindowIsOpen { beginTake() } else { pickWindow(thenStart: true) }
+    }
+
+    /// The last-used window is still open (looked up now).
+    public var lastWindowIsOpen: Bool { pickedWindow.map { locate($0) != nil } ?? false }
+
+    /// An area is saved for the display with the mouse.
+    public var areaSavedUnderMouse: Bool {
+        (devices.displayWithMouse() ?? currentDisplay).map { savedArea(on: $0) != nil } ?? false
+    }
+
+    /// What the record items say (design.md §11.6).
+    public var recordContext: MenuBuilder.RecordContext {
+        MenuBuilder.RecordContext(lastSource: settings.source,
+                                  openWindowApp: lastWindowIsOpen ? pickedWindow?.appName : nil,
+                                  windowAvailable: windowSourceAvailable, areaSaved: areaSavedUnderMouse)
+    }
+
+    /// "Record Full Screen", "Record Safari", "Record Area" (the split button's main part).
+    public var recordTitle: String {
+        switch settings.source {
+        case .fullScreen: "Record Full Screen"
+        case .window: pickedWindow.map { "Record \($0.appName)" } ?? "Record Window…"
+        case .area: "Record Area"
+        }
+    }
+
+    /// The countdown's line under the digit (design.md §11.6).
+    public var countdownSourceLine: String? {
+        guard phase.countdownDigit != nil, !phase.isInTake else { return nil }
+        switch settings.source {
+        case .fullScreen:
+            let displays = devices.displays()
+            return displays.count > 1 ? "Full screen · \(recordingDisplay?.name ?? "")" : "Full screen"
+        case .window:
+            return pickedWindow.map { SourceRowState.PickedWindow(appName: $0.appName, title: $0.title).line }
+        case .area:
+            return recordingDisplay.flatMap { savedArea(on: $0) }.map { "Area · \(SourceFormat.size($0.size))" }
+        }
+    }
+
+    /// The window's 3 pt blue outline during the 3-2-1 (never recorded).
+    public var countdownWindowFrame: CGRect? {
+        guard phase.countdownDigit != nil, !phase.isInTake, settings.source == .window else { return nil }
+        return pickedWindow?.frame
     }
 
     private func showAreaOverlay(startsRecording: Bool) {
@@ -511,7 +597,8 @@ public final class AppModel {
 
     /// During an area take: the four corner brackets (never recorded).
     public var bracketsFrame: CGRect? {
-        guard phase.isInTake || phase == .starting, settings.source == .area else { return nil }
+        // From the first digit of the countdown (design.md §11.6) to the end of the take.
+        guard phase.isInTake || phase == .starting || phase.countdownDigit != nil, settings.source == .area else { return nil }
         return recordingDisplay.flatMap { savedArea(on: $0) }
     }
 

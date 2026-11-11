@@ -61,6 +61,20 @@ final class RecordingsWindowController: NSWindowController, NSWindowDelegate, NS
             self.reload()
         }
         trackChanges { [weak self] in self?.followTake() }
+        // The split button follows the last source (design.md §11.6).
+        trackChanges { [weak self] in
+            guard let self else { return }
+            var state = self.store.state
+            self.applySource(to: &state)
+            if state != self.store.state { self.store.state = state }
+        }
+    }
+
+    private func applySource(to state: inout RecordingsState) {
+        state.source = model.settings.source
+        state.recordTitle = model.recordTitle
+        state.recordHelp = model.settings.source == .window ? model.pickedWindow?.title : nil
+        state.windowSourceAvailable = model.windowSourceAvailable
     }
 
     @MainActor required init?(coder: NSCoder) { fatalError() }
@@ -94,7 +108,9 @@ final class RecordingsWindowController: NSWindowController, NSWindowDelegate, NS
             if cached == nil { load(url, key: key) }
         }
         items.sort { $0.date > $1.date }
-        store.state = RecordingsState(folderPath: (folder.path as NSString).abbreviatingWithTildeInPath, items: items, now: Date())
+        var state = RecordingsState(folderPath: (folder.path as NSString).abbreviatingWithTildeInPath, items: items, now: Date())
+        applySource(to: &state)
+        store.state = state
         store.selection = store.selection.intersection(Set(items.map(\.url)))
         pumpLoads()
     }
@@ -186,15 +202,23 @@ final class RecordingsWindowController: NSWindowController, NSWindowDelegate, NS
 
     // MARK: Takes started from this window
 
-    func newRecording() {
+    func newRecording() { record(nil) }
+
+    /// The split button: nil = the last source; a kind = switch to it and start (design.md §11.6).
+    func record(_ kind: SourceKind?) {
         guard model.phase == .idle || model.phase == .ready else { model.hotkey(.startStop); return }
+        prepareForTake()
+        model.record(kind)
+    }
+
+    /// A take started from this window: it hides (back after Stop) and the app that was in front
+    /// gets the focus: record the user's work, not Bubble.
+    func prepareForTake() {
         if window?.isVisible == true {
             hiddenForTake = true
             window?.orderOut(nil)
         }
-        // Record the user's work, not Bubble.
         lastOtherApp?.activate()
-        model.hotkey(.startStop)
     }
 
     private var lastPhase: Phase = .idle
@@ -218,6 +242,7 @@ final class RecordingsWindowController: NSWindowController, NSWindowDelegate, NS
     private func actions() -> RecordingsActions {
         var a = RecordingsActions()
         a.newRecording = { [weak self] in self?.newRecording() }
+        a.record = { [weak self] in self?.record($0) }
         a.open = { urls in urls.forEach { AfterStop.openInPlayer($0) } }
         a.reveal = { urls in NSWorkspace.shared.activateFileViewerSelecting(urls) }
         a.edit = { [model] url in model.effects.editRecording(url) }

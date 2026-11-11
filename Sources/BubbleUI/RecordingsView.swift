@@ -32,6 +32,13 @@ public struct RecordingsState: Equatable {
     public var items: [RecordingItem]
     /// "Today" / "Yesterday" are relative to this.
     public var now: Date
+    /// The split button (design.md §11.6): what its main part records.
+    public var source: SourceKind = .fullScreen
+    /// "Record Full Screen", "Record Safari", "Record Area".
+    public var recordTitle = "Record Full Screen"
+    /// The window's title, for "Record Safari".
+    public var recordHelp: String?
+    public var windowSourceAvailable = true
 
     public init(folderPath: String, items: [RecordingItem], now: Date = Date()) {
         self.folderPath = folderPath; self.items = items; self.now = now
@@ -45,6 +52,8 @@ public struct RecordingsState: Equatable {
 
 public struct RecordingsActions {
     public var newRecording: @MainActor @Sendable () -> Void = {}
+    /// The split button: nil = its main part (the last source), else switch to that source and start.
+    public var record: @MainActor @Sendable (SourceKind?) -> Void = { _ in }
     public var open: @MainActor @Sendable ([URL]) -> Void = { _ in }
     public var reveal: @MainActor @Sendable ([URL]) -> Void = { _ in }
     public var copy: @MainActor @Sendable ([URL]) -> Void = { _ in }
@@ -122,7 +131,7 @@ public struct RecordingsView: View {
             }
             Spacer()
             // Empty: the centered button below is the only one.
-            if !state.items.isEmpty { newRecordingButton }
+            if !state.items.isEmpty { recordSplitButton }
         }
         .frame(minHeight: 28)
         .padding(.horizontal, 20)
@@ -130,21 +139,52 @@ public struct RecordingsView: View {
         .padding(.bottom, 12)
     }
 
-    private var newRecordingButton: some View {
-        Button(action: actions.newRecording) {
-            HStack(spacing: 7) {
-                Circle().fill(Color.white).frame(width: 8, height: 8)
-                Text("New Recording")
+    /// "● Record Full Screen | ▾" (design.md §11.6): the main part records the last source, the
+    /// menu switches source and starts.
+    private var recordSplitButton: some View {
+        let red = Color(red: 0.92, green: 0.23, blue: 0.21)
+        return HStack(spacing: 0) {
+            Button { actions.record(nil) } label: {
+                HStack(spacing: 7) {
+                    Circle().fill(Color.white).frame(width: 8, height: 8)
+                    Text(state.recordTitle).lineLimit(1)
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 10)
+                .frame(height: 28)
+                .contentShape(Rectangle())
             }
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(red: 0.92, green: 0.23, blue: 0.21)))
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help(state.recordHelp.map { "\($0) (⌥⇧L)" } ?? "\(state.recordTitle) (⌥⇧L)")
+
+            Rectangle().fill(Color.white.opacity(0.35)).frame(width: 1, height: 16)
+
+            Menu {
+                sourceItem(.fullScreen, "Full Screen")
+                if state.windowSourceAvailable { sourceItem(.window, "Window…") }
+                sourceItem(.area, "Area…")
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .frame(width: 26, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Choose what to record")
         }
-        .buttonStyle(.plain)
-        .help("New Recording (⌥⇧L)")
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(.white)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(red))
+        .fixedSize()
+    }
+
+    @ViewBuilder private func sourceItem(_ kind: SourceKind, _ title: String) -> some View {
+        Button { actions.record(kind) } label: {
+            if state.source == kind { Label(title, systemImage: "checkmark") } else { Text(title) }
+        }
     }
 
     private var list: some View {
@@ -191,13 +231,14 @@ public struct RecordingsView: View {
             Text("No recordings yet")
                 .font(.system(size: 17, weight: .semibold))
             VStack(spacing: 3) {
-                Text("Press ⌥⇧L anywhere, or click New Recording.")
+                Text("Press ⌥⇧L anywhere, or click \(state.recordTitle).")
                 Text("Your videos are saved in \(state.folderPath).")
             }
             .font(.system(size: 13))
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
-            newRecordingButton.padding(.top, 6)
+            // The same split button as the header: it says what it records (design.md §11.6).
+            recordSplitButton.padding(.top, 6)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

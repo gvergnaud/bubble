@@ -530,7 +530,8 @@ struct Rig {
 
     @Test func idleMenu() {
         let rig = Rig()
-        #expect(rig.model.menu.compactMap { $0.title } == ["Start Recording", "Show Recorder", "Recordings", "Show Last Recording in Finder",
+        // design.md §11.6: the three ways to start (no window picker in this rig: no Record Window…).
+        #expect(rig.model.menu.compactMap { $0.title } == ["Record Full Screen", "Record Area…", "Show Recorder", "Recordings", "Show Last Recording in Finder",
                                                            "Edit Last Recording", "Open Video…", "Open Recordings Folder", "Settings…", "Quit Bubble"])
         for title in ["Show Last Recording in Finder", "Edit Last Recording"] {
             let item = rig.model.menu.first { $0.title == title }

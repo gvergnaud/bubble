@@ -282,17 +282,27 @@ public enum AreaGeometry {
     public static func barAbove(_ r: CGRect, bounds: CGSize, barHeight: CGFloat = 44) -> Bool {
         r.maxY + barHeight + 12 > bounds.height
     }
+
+    /// The bar's top-left: centered on the area, 10 pt under it (or above it), kept on screen.
+    public static func barOrigin(for r: CGRect, barSize: CGSize, bounds: CGSize) -> CGPoint {
+        let x = min(max(8, r.midX - barSize.width / 2), bounds.width - barSize.width - 8)
+        let above = barAbove(r, bounds: bounds, barHeight: barSize.height)
+        let y = above ? max(8, r.minY - barSize.height - 10) : r.maxY + 10
+        return CGPoint(x: x, y: y)
+    }
 }
 
+/// What the overlay shows: the dim, the area's outline and handles, the hint, and (for snapshots)
+/// the bar. It takes no mouse: the window's AreaOverlayContainer (AppKit) handles the drag, and the
+/// live bar is its own view there (a SwiftUI drag gesture in a non-activating panel of a background
+/// app never got the user's clicks: the 0.1.4 bug).
 public struct AreaOverlayView: View {
     var state: AreaOverlayState
     var actions: AreaOverlayActions
-    @State private var dragStart: CGPoint?
-    @State private var moveOrigin: CGRect?
-    @State private var resizeHandle: AreaGeometry.Handle?
+    var showsBar: Bool
 
-    public init(state: AreaOverlayState, actions: AreaOverlayActions = .init()) {
-        self.state = state; self.actions = actions
+    public init(state: AreaOverlayState, actions: AreaOverlayActions = .init(), showsBar: Bool = true) {
+        self.state = state; self.actions = actions; self.showsBar = showsBar
     }
 
     public var body: some View {
@@ -327,14 +337,13 @@ public struct AreaOverlayView: View {
                         .offset(x: p.x - 4.5, y: p.y - 4.5)
                         .allowsHitTesting(false)
                 }
-                bar(r)
+                if showsBar { placedBar(r) }
             } else {
                 hint
             }
         }
         .frame(width: state.displaySize.width, height: state.displaySize.height, alignment: .topLeading)
-        .contentShape(Rectangle())
-        .gesture(drag)
+        .allowsHitTesting(false)
         .environment(\.colorScheme, .dark)
     }
 
@@ -353,11 +362,27 @@ public struct AreaOverlayView: View {
         .allowsHitTesting(false)
     }
 
-    private func bar(_ r: CGRect) -> some View {
-        let above = AreaGeometry.barAbove(r, bounds: state.displaySize)
+    private func placedBar(_ r: CGRect) -> some View {
+        let origin = AreaGeometry.barOrigin(for: r, barSize: AreaOverlayBar.estimatedSize, bounds: state.displaySize)
+        return AreaOverlayBar(state: state, actions: actions)
+            .offset(x: origin.x, y: origin.y)
+    }
+}
+
+/// Size label, Cancel, Use This Area (or Start Recording from ⌥⇧L).
+public struct AreaOverlayBar: View {
+    var state: AreaOverlayState
+    var actions: AreaOverlayActions
+
+    public init(state: AreaOverlayState, actions: AreaOverlayActions) { self.state = state; self.actions = actions }
+
+    static let estimatedSize = CGSize(width: 300, height: 44)
+
+    public var body: some View {
+        let size = state.rect?.size ?? .zero
         return HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(SourceFormat.size(r.size))
+                Text(SourceFormat.size(size))
                     .font(.system(size: 13, weight: .semibold).monospacedDigit())
                     .foregroundStyle(state.tooSmall ? Color.orange : .white)
                 if state.tooSmall {
@@ -380,40 +405,54 @@ public struct AreaOverlayView: View {
         .fixedSize()
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.black.opacity(0.72)))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.15), lineWidth: 0.5))
-        .alignmentGuide(.leading) { d in
-            // Centered on the area, kept on screen.
-            let x = min(max(8, r.midX - d.width / 2), state.displaySize.width - d.width - 8)
-            return -x
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+/// One drag on the overlay: draw a new area, move it, or pull one of its handles (pure, tested).
+public struct AreaDrag: Sendable, Equatable {
+    public enum Kind: Sendable, Equatable { case draw, move(CGRect), resize(AreaGeometry.Handle, CGRect) }
+    public var start: CGPoint
+    public var kind: Kind
+
+    /// What a mouse-down at `p` starts, given the current area (top-left coordinates).
+    public init(at p: CGPoint, current: CGRect?) {
+        start = p
+        if let r = current {
+            if let h = AreaGeometry.Handle.allCases.first(where: {
+                let q = AreaGeometry.handlePoint($0, in: r)
+                return hypot(q.x - p.x, q.y - p.y) < 10
+            }) {
+                kind = .resize(h, r); return
+            }
+            if r.contains(p) { kind = .move(r); return }
         }
-        .alignmentGuide(.top) { d in -(above ? r.minY - d.height - 10 : r.maxY + 10) }
+        kind = .draw
     }
 
-    private var drag: some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .local)
-            .onChanged { g in
-                let flags = NSEvent.modifierFlags
-                if dragStart == nil {
-                    dragStart = g.startLocation
-                    if let r = state.rect {
-                        resizeHandle = AreaGeometry.Handle.allCases.first {
-                            let p = AreaGeometry.handlePoint($0, in: r)
-                            return hypot(p.x - g.startLocation.x, p.y - g.startLocation.y) < 10
-                        }
-                        if resizeHandle == nil, r.contains(g.startLocation) { moveOrigin = r }
-                    }
-                }
-                let bounds = state.displaySize
-                if let h = resizeHandle, let r = state.rect {
-                    actions.setRect(AreaGeometry.resized(r, handle: h, to: g.location, bounds: bounds, keepRatio: flags.contains(.shift)))
-                } else if let origin = moveOrigin {
-                    actions.setRect(AreaGeometry.moved(origin, by: g.translation, bounds: bounds))
-                } else if let start = dragStart {
-                    actions.setRect(AreaGeometry.drawn(from: start, to: g.location, bounds: bounds,
-                                                       keepRatio: flags.contains(.shift) ? 1 : nil,
-                                                       snap169: flags.contains(.command)))
-                }
-            }
-            .onEnded { _ in dragStart = nil; moveOrigin = nil; resizeHandle = nil }
+    /// The area with the mouse at `p`. ⇧ keeps the ratio, ⌘ snaps a new area to 16:9 sizes.
+    public func rect(at p: CGPoint, bounds: CGSize, shift: Bool, command: Bool) -> CGRect {
+        switch kind {
+        case .draw:
+            AreaGeometry.drawn(from: start, to: p, bounds: bounds, keepRatio: shift ? 1 : nil, snap169: command)
+        case .move(let r):
+            AreaGeometry.moved(r, by: CGSize(width: p.x - start.x, height: p.y - start.y), bounds: bounds)
+        case .resize(let h, let r):
+            AreaGeometry.resized(r, handle: h, to: p, bounds: bounds, keepRatio: shift)
+        }
+    }
+}
+
+// MARK: - Window outline during the countdown (design.md §11.6, never recorded)
+
+public struct WindowOutlineView: View {
+    var size: CGSize
+    public init(size: CGSize) { self.size = size }
+    public var body: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(Color.accentColor.opacity(0.95), lineWidth: 3)
+            .frame(width: size.width, height: size.height)
+            .allowsHitTesting(false)
     }
 }
 

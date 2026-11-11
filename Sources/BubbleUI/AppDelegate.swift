@@ -16,6 +16,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     private var countdown: CountdownWindowController?
     private var areaOverlay: AreaOverlayWindowController?
     private var brackets: BracketsWindowController?
+    private var windowOutline: WindowOutlineController?
     private var welcome: WelcomeWindowController?
     private let hotkeys = Hotkeys()
     private let log = Logger(subsystem: "local.bubble.Bubble", category: "App")
@@ -50,6 +51,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         countdown = CountdownWindowController(model: model)
         areaOverlay = AreaOverlayWindowController(model: model)
         brackets = BracketsWindowController(model: model)
+        windowOutline = WindowOutlineController(model: model)
         trackChanges { [weak self] in
             guard let self else { return }
             self.hotkeys.setCountdownKeys(self.model.countdownKeysActive)
@@ -111,10 +113,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     /// Right-click on the Dock icon.
     public func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()
-        let take = model.phase.isInTake
-        let record = NSMenuItem(title: take ? "Stop Recording" : "New Recording", action: #selector(newRecording(_:)), keyEquivalent: "")
-        record.target = self
-        menu.addItem(record)
+        for item in Self.recordMenuItems(target: self) where validateMenuItem(item) || model.phase.isInTake {
+            if !item.isHidden { menu.addItem(item) }
+        }
         let recordings = NSMenuItem(title: "Recordings", action: #selector(showRecordings(_:)), keyEquivalent: "")
         recordings.target = self
         menu.addItem(recordings)
@@ -130,6 +131,43 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
             model.hotkey(.startStop)
         }
     }
+    // Record Full Screen / Record Safari / Record Window… / Record Area(…) (design.md §11.6): titles,
+    // visibility and ⌥⇧L come from MenuBuilder.recordItems in validateMenuItem. In a take the first
+    // one reads "Stop Recording" and the others hide.
+    @objc func recordFullScreen(_ sender: Any?) { startOrStop(.recordFullScreen) }
+    @objc func recordLastWindow(_ sender: Any?) { startOrStop(.recordLastWindow) }
+    @objc func recordWindow(_ sender: Any?) { startOrStop(.recordWindow) }
+    @objc func recordArea(_ sender: Any?) { startOrStop(.recordArea) }
+
+    private func startOrStop(_ action: MenuAction) {
+        guard !model.phase.isInTake else { model.hotkey(.startStop); return }
+        // From the Recordings window: it hides and gives the focus back first.
+        if let window = effects.recordingsWindow, window.window?.isKeyWindow == true {
+            window.prepareForTake()
+        }
+        model.perform(action)
+    }
+
+    private static let recordSelectors: [(Selector, MenuAction)] = [
+        (#selector(recordFullScreen(_:)), .recordFullScreen),
+        (#selector(recordLastWindow(_:)), .recordLastWindow),
+        (#selector(recordWindow(_:)), .recordWindow),
+        (#selector(recordArea(_:)), .recordArea),
+    ]
+
+    /// The record items for the File and Dock menus (validateMenuItem fills them in).
+    static func recordMenuItems(target: AnyObject?) -> [NSMenuItem] {
+        // Default titles until the first validation (no window picked, no area saved).
+        let defaults = MenuBuilder.recordItems(MenuBuilder.RecordContext())
+        return recordSelectors.map { selector, action in
+            let entry = defaults.first { if case .item(_, _, let a, _) = $0 { a == action } else { false } }
+            let item = NSMenuItem(title: entry?.title ?? "", action: selector, keyEquivalent: "")
+            item.isHidden = entry == nil
+            item.target = target
+            return item
+        }
+    }
+
     @objc func pauseResume(_ sender: Any?) { model.hotkey(.pauseResume) }
     @objc func discardTake(_ sender: Any?) { Task { await model.discardWithConfirmation() } }
     @objc func showRecordings(_ sender: Any?) { effects.showRecordings() }
@@ -140,6 +178,31 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         switch item.action {
         case #selector(newRecording(_:)):
             item.title = phase.isInTake ? "Stop Recording" : "New Recording"
+            return phase != .saving && phase != .starting
+        case let action? where Self.recordSelectors.contains(where: { $0.0 == action }):
+            let menuAction = Self.recordSelectors.first { $0.0 == action }!.1
+            let take = phase.isInTake
+            var shortcut: String?
+            if take {
+                item.isHidden = menuAction != .recordFullScreen
+                item.title = "Stop Recording"
+                shortcut = HotkeyAction.startStop.shortcut
+            } else if case .item(let title, let s, _, _)? = MenuBuilder.recordItems(model.recordContext)
+                .first(where: { if case .item(_, _, let a, _) = $0 { a == menuAction } else { false } }) {
+                item.isHidden = false
+                item.title = title
+                shortcut = s
+            } else {
+                item.isHidden = true // Record Safari with no open window, Window… with no picker
+            }
+            // ⌥⇧L on the item that does exactly what it does; display only, the global hotkey
+            // gets the keystroke first.
+            if let shortcut {
+                StatusItemController.applyShortcut(shortcut, to: item)
+            } else {
+                item.keyEquivalent = ""
+                item.keyEquivalentModifierMask = []
+            }
             return phase != .saving && phase != .starting
         case #selector(pauseResume(_:)):
             item.title = phase == .paused || phase.countdownDigit != nil && phase.isInTake ? "Resume" : "Pause"
@@ -192,11 +255,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
             item("Quit Bubble", #selector(NSApplication.terminate(_:)), "q"),
         ])
         // ⌥⇧L/P/C are global hotkeys already; the menu shows them without claiming them again.
-        let newRec = item("New Recording", #selector(newRecording(_:)), "", toApp: true)
+        // Record Full Screen / Window… / Area… (design.md §11.6); validateMenuItem moves ⌥⇧L to the
+        // last-used one and turns the first into Stop Recording during a take.
+        let records = recordMenuItems(target: app)
+        if let first = records.first { StatusItemController.applyShortcut(HotkeyAction.startStop.shortcut, to: first) }
         let pause = item("Pause", #selector(pauseResume(_:)), "", toApp: true)
         let discard = item("Discard…", #selector(discardTake(_:)), "", toApp: true)
         // The global hotkey gets the keystroke first, so these only display the shortcut.
-        StatusItemController.applyShortcut(HotkeyAction.startStop.shortcut, to: newRec)
         StatusItemController.applyShortcut(HotkeyAction.pauseResume.shortcut, to: pause)
         StatusItemController.applyShortcut(HotkeyAction.discard.shortcut, to: discard)
         // ⌘O opens any video in the editor; Open Recent lists the videos opened there
@@ -207,7 +272,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         recent.submenu = recentMenu
         let down = String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
         submenu("File", [
-            newRec, pause, discard,
+        ] + records + [
+            pause, discard,
             .separator(),
             item("Open Video…", #selector(openVideo(_:)), "o", toApp: true),
             recent,
