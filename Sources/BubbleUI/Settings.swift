@@ -41,6 +41,12 @@ public final class Settings {
     public var lastRecording: URL? { didSet { defaults.set(lastRecording?.path, forKey: Key.last) } }
     /// The Welcome window was finished once (Done). It shows again only if Screen Recording is missing.
     public var welcomeDone: Bool { didSet { defaults.set(welcomeDone, forKey: Key.welcome) } }
+    /// What ⌥⇧L records (design.md §11.1).
+    public var source: SourceKind { didSet { defaults.set(source.rawValue, forKey: Key.source) } }
+    /// The area per display (key: BubblePlacement.displayKey), AppKit global points.
+    public var areas: [String: CGRect] { didSet { store(areas, Key.areas) } }
+    /// The bubble's place inside a window or an area, per source kind ("window" / "area").
+    public var framePlaces: [String: BubblePlace] { didSet { store(framePlaces, Key.framePlaces) } }
 
     public init(defaults: UserDefaults = .standard, defaultFolder: URL = RecordingFiles.defaultFolder) {
         self.defaults = defaults
@@ -55,6 +61,9 @@ public final class Settings {
         bubblePlaces = Self.load([String: BubblePlace].self, defaults, Key.places) ?? [:]
         lastRecording = defaults.string(forKey: Key.last).map { URL(fileURLWithPath: $0) }
         welcomeDone = defaults.bool(forKey: Key.welcome)
+        source = defaults.string(forKey: Key.source).flatMap(SourceKind.init(rawValue:)) ?? .fullScreen
+        areas = Self.load([String: CGRect].self, defaults, Key.areas) ?? [:]
+        framePlaces = Self.load([String: BubblePlace].self, defaults, Key.framePlaces) ?? [:]
     }
 
     /// The save folder as stored, readable off the main actor (the editor's server asks at each open).
@@ -83,5 +92,8 @@ public final class Settings {
         static let places = "bubblePlaces"
         static let last = "lastRecording"
         static let welcome = "welcomeDone"
+        static let source = "recordSource"
+        static let areas = "recordAreas"
+        static let framePlaces = "bubbleFramePlaces"
     }
 }

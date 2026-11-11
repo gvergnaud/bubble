@@ -642,6 +642,103 @@ and you can find every past recording.
 
 ---
 
+## 11. Record a window or an area (2026-11-11; engine: capture)
+
+Full screen stays the default and the one-keystroke path. Two more sources, for when the
+rest of the screen shouldn't be in the video.
+
+### 11.1 Recorder panel: the source
+
+```
+┌────────────────────────────────────┐
+│ [ Full screen | Window | Area ]    │   segmented control, first row
+│  ▣ Safari — Pull request #42  Change…│   Window: app icon, app name — window title
+│                                    │   Area:   "1280 × 720 on Built-in Display  Change…"
+│  Camera   [FaceTime HD Camera ▾]   │
+│  Mic      [MacBook Pro Mic   ▾]    │
+│  ...                               │
+│  [        Start Recording        ] │
+└────────────────────────────────────┘
+```
+
+- **Full screen**: as today (the Display menu shows only for it, and only with 2+ displays).
+- **Window**: picking the segment opens Apple's own window picker (system UI) at once.
+  Picked: the row shows the app's icon, "<App> — <window title>" (middle-truncated) and
+  **Change…** (opens the picker again). Picker canceled with no window chosen yet: the segment
+  goes back to where it was.
+- **Area**: picking the segment opens the area overlay (11.3) on the display with the mouse.
+  Done: the row shows "1280 × 720 on <display>" and **Change…**. The area is remembered per
+  display; with one already saved for that display, picking Area reuses it (no overlay; Change…
+  to redraw).
+- The source is remembered. **⌥⇧L** records the last source if it is still there (the window
+  is open; an area is saved for the display with the mouse); otherwise it opens the Recorder
+  panel on that segment, with the picker or overlay up, instead of guessing. It never silently
+  falls back to full screen.
+
+### 11.2 The bubble inside a window or area
+
+- Only what's inside the frame is recorded, so the bubble lives inside it: bottom-left, 24 pt
+  from the frame's edges, and it **follows the window** when it moves or resizes. It can still
+  be dragged; it snaps to the frame's four corners and stays inside it. Its corner is
+  remembered per source kind (window / area).
+- **Too small for the bubble**: when the frame's shorter side is under 2 × the bubble's
+  diameter, the bubble steps down a size (L → M → S) for this take, without asking. If even S
+  doesn't fit (shorter side under 240 pt), the take records without the camera and the panel
+  says, under the source row: "This window is too small for your bubble: recording without the
+  camera." (Area: "This area is too small…"). The bubble's own size setting doesn't change.
+- Preview (Ready): the bubble already sits where it will be recorded, inside the frame.
+
+### 11.3 Area overlay
+
+```
+ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   whole display dimmed (black 45%)
+ ░░░░░░░┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓░░░░░░░░░░
+ ░░░░░░░┃                             ┃░░░░░░░░░░   the area: clear, 1.5 pt white outline,
+ ░░░░░░░┃          (clear)            ●  ░░░░░░░░   8 handles (corners + edge middles)
+ ░░░░░░░┃                             ┃░░░░░░░░░░
+ ░░░░░░░┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛░░░░░░░░░░
+ ░░░░░░░   1280 × 720    [Cancel] [Use This Area]   bar under the area (above it at the bottom edge)
+```
+
+- Drag anywhere to draw; drag inside to move it; handles to resize; ⇧ keeps the ratio; the size
+  label is in points, live. Holding ⌘ while dragging snaps to 16:9 sizes (1280 × 720,
+  1920 × 1080…). Minimum 320 × 240 pt: smaller, the label turns amber and "Use This Area" is
+  off ("At least 320 × 240").
+- **Return** = Use This Area (from the panel) or Start Recording (when it came from ⌥⇧L);
+  **Esc** cancels (the panel keeps the previous source). The overlay is never in the video.
+- During the take, four small white corner brackets mark the area on screen (not recorded),
+  so you know what's in the shot.
+
+### 11.4 During a window take
+
+| Event | What happens | Toast (not recorded) |
+|---|---|---|
+| Window moved or resized | the video follows it; the video's size stays the one at the start, letterboxed if the shape changes | none |
+| Window covered by another window | still recorded as if in front (macOS captures the window itself) | none |
+| Window minimized, or on another Space (one engine reason, `notOnScreen`: macOS can't tell them apart without Accessibility) | auto-pause | "Paused: the window isn't on screen. Bring it back, then Resume (⌥⇧P)." |
+| App hidden (⌘H) | auto-pause | "Paused: <App> is hidden. Show it, then Resume (⌥⇧P)." |
+| Window dragged to another display | auto-pause | "Paused: the window moved to another display. Move it back, then Resume (⌥⇧P)." |
+| Window closed (or its app quits) | the take stops and saves (then the usual after-Stop) | "The window was closed, so the recording stopped and was saved." |
+| Area's display disconnected | stop and save, as for full screen (§7.2) | "The display was disconnected, so the recording stopped and was saved." |
+
+- Never auto-resume (same rule as sleep, §7.5): the user resumes. When the window comes back
+  on screen: toast "The window is back. Resume with ⌥⇧P."
+- From ⌥⇧L, the overlay's bar button reads **Start Recording** (Return starts); from the
+  panel it reads **Use This Area**. Empty overlay: "Drag to choose the area to record" /
+  "Esc to cancel".
+- Area row in the panel: "1280 × 720" alone with one display; "1280 × 720 · <display>" with
+  2+ displays (never truncated in the middle of the size).
+- Known limit, said in the panel's tooltip on **Window**: menus, pop-ups and sheets that an app
+  draws as separate windows may not show in a window recording; use Area or Full screen for
+  those.
+
+### 11.5 Words
+
+Segments: **Full screen**, **Window**, **Area**. Buttons: **Change…**, **Use This Area**,
+**Cancel**. Menu bar menu while recording a window: the title line "Recording <App>" above Stop.
+
+---
+
 ## 9. Words (UI copy)
 
 English, sentence case, short. Buttons: **Start Recording**, **Stop**, **Pause**,

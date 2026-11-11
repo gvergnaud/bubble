@@ -26,7 +26,9 @@ public enum MenuEntry: Sendable, Equatable {
 public enum MenuBuilder {
     /// The menu for `phase`. Idle and Ready get the app menu (right-click); a take gets the take menu
     /// (design.md v1 scope note, "v1 menu bar menu while recording").
-    public static func menu(phase: Phase, cameraAvailable: Bool, cameraHidden: Bool, hasLastRecording: Bool) -> [MenuEntry] {
+    /// `recordingApp`: a window take's app ("Recording Safari" heads the take menu, design.md §11.5).
+    public static func menu(phase: Phase, cameraAvailable: Bool, cameraHidden: Bool, hasLastRecording: Bool,
+                            recordingApp: String? = nil) -> [MenuEntry] {
         switch phase {
         case .idle, .ready:
             return [
@@ -64,6 +66,7 @@ public enum MenuBuilder {
                     : .item(title: "Hide Camera", shortcut: nil, action: .hideCamera, enabled: true))
             }
             entries.append(.item(title: "Discard…", shortcut: HotkeyAction.discard.shortcut, action: .discard, enabled: true))
+            if let recordingApp { entries.insert(.label("Recording \(recordingApp)"), at: 0) }
             return entries
         case .saving:
             return [.label("Saving…")]

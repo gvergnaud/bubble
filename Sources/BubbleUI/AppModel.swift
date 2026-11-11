@@ -73,6 +73,18 @@ public struct BubbleState: Sendable, Equatable {
     public var cameraLive: Bool
     /// The camera is on but its frames stopped: "Camera unavailable" in the bubble until they come back.
     public var cameraUnavailable: Bool = false
+    /// Window or area source: the recorded frame (AppKit global points). The bubble lives inside it
+    /// (design.md §11.2); nil = the display's usable area.
+    public var frame: CGRect? = nil
+}
+
+/// The window layer shows the Area overlay while this is set (design.md §11.3).
+public struct AreaOverlayRequest: Sendable, Equatable {
+    public var display: DisplayInfo
+    /// The saved area to start from (AppKit global points), nil: draw one.
+    public var rect: CGRect?
+    /// Opened from ⌥⇧L: Return starts the take.
+    public var startsRecording: Bool
 }
 
 public enum Access: Sendable, Equatable {
@@ -97,6 +109,10 @@ public struct RecorderPanelState: Sendable, Equatable {
     public var displays: [DisplayInfo]
     public var selectedDisplayID: CGDirectDisplayID?
     public var shortcut: String
+    /// Full screen / Window / Area and the row under it (design.md §11.1).
+    public var source = SourceRowState()
+    /// false: no Window segment (no system window picker on this Mac).
+    public var windowSourceAvailable = true
 
     public init(cameras: [DeviceInfo], selectedCameraID: String?, cameraAccess: Access,
                 microphones: [DeviceInfo], selectedMicrophoneID: String?, microphoneAccess: Access,
@@ -179,6 +195,11 @@ public final class AppModel {
     @ObservationIgnored public let devices: DeviceCatalog
     @ObservationIgnored public let permissions: PermissionsProviding
     @ObservationIgnored public let effects: AppEffects
+    /// nil or !isAvailable: no Window segment (macOS before 15.2).
+    @ObservationIgnored public let windowPicker: WindowPicking?
+    /// Looks the picked window up again just before a take (capture's RecordedWindow.current):
+    /// its frame (AppKit global) and display now, nil when it's gone or off screen.
+    @ObservationIgnored let windowLookup: (@MainActor (CGWindowID) -> (frame: CGRect, displayID: CGDirectDisplayID)?)?
     public let settings: Settings
     @ObservationIgnored let sleep: @MainActor (Duration) async throws -> Void
     @ObservationIgnored let now: @MainActor () -> Date
@@ -203,6 +224,14 @@ public final class AppModel {
     @ObservationIgnored public var bubbleWindowID: CGWindowID?
     /// Bumped when devices or permissions change, so the panel re-reads them.
     public private(set) var devicesVersion = 0
+    /// The window picked for the Window source (kept for the session: window ids don't survive a relaunch).
+    public private(set) var pickedWindow: PickedWindow?
+    /// Set while the Area overlay should be up.
+    public private(set) var areaOverlay: AreaOverlayRequest?
+    /// The system window picker is up.
+    public private(set) var isPickingWindow = false
+    /// The source to go back to when the first pick or drawing is canceled.
+    @ObservationIgnored private var sourceBeforePick: SourceKind = .fullScreen
 
     // Private state
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
@@ -217,11 +246,16 @@ public final class AppModel {
     public static let discardWindow: TimeInterval = 3
 
     public init(recorder: Recorder, camera: CameraFeed, devices: DeviceCatalog, permissions: PermissionsProviding,
-                settings: Settings, effects: AppEffects,
+                settings: Settings, effects: AppEffects, windowPicker: WindowPicking? = nil,
+                windowLookup: (@MainActor (CGWindowID) -> (frame: CGRect, displayID: CGDirectDisplayID)?)? = nil,
                 sleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
                 now: @escaping @MainActor () -> Date = { Date() }) {
         self.recorder = recorder; self.camera = camera; self.devices = devices; self.permissions = permissions
         self.settings = settings; self.effects = effects; self.sleep = sleep; self.now = now
+        self.windowPicker = windowPicker
+        self.windowLookup = windowLookup
+        // No window picker on this Mac: a remembered Window source falls back to Full screen.
+        if settings.source == .window, windowPicker?.isAvailable != true { settings.source = .fullScreen }
         recorder.onEvent = { [weak self] in self?.handle($0) }
         camera.onDisconnected = { [weak self] in self?.cameraDisconnected() }
         camera.onLiveChange = { [weak self] live in self?.cameraLiveChanged(live) }
@@ -264,7 +298,8 @@ public final class AppModel {
 
     public var menu: [MenuEntry] {
         MenuBuilder.menu(phase: phase, cameraAvailable: bubble != nil, cameraHidden: cameraHidden,
-                         hasLastRecording: settings.lastRecording != nil)
+                         hasLastRecording: settings.lastRecording != nil,
+                         recordingApp: phase.isInTake ? recordedWindow?.appName : nil)
     }
 
     public func perform(_ action: MenuAction) {
@@ -318,11 +353,16 @@ public final class AppModel {
     public var panel: RecorderPanelState {
         _ = devicesVersion
         let displays = devices.displays()
-        return RecorderPanelState(
+        var state = RecorderPanelState(
             cameras: devices.cameras(), selectedCameraID: resolvedCameraID, cameraAccess: access(.camera),
             microphones: devices.microphones(), selectedMicrophoneID: resolvedMicrophoneID,
             microphoneAccess: access(.microphone), computerSound: settings.computerSound,
-            displays: displays.count > 1 ? displays : [], selectedDisplayID: currentDisplay?.id)
+            // The Display menu is for Full screen only (design.md §11.1).
+            displays: displays.count > 1 && settings.source == .fullScreen ? displays : [],
+            selectedDisplayID: currentDisplay?.id)
+        state.source = sourceRow
+        state.windowSourceAvailable = windowSourceAvailable
+        return state
     }
 
     public func selectCamera(_ id: String?) {
@@ -357,6 +397,168 @@ public final class AppModel {
 
     public func openSystemSettings(_ permission: Permission) { permissions.openSystemSettings(permission) }
 
+    // MARK: Source: full screen, a window, an area (design.md §11)
+
+    public var windowSourceAvailable: Bool { windowPicker?.isAvailable == true }
+
+    /// The panel's source control and row.
+    public var sourceRow: SourceRowState {
+        let kind = settings.source
+        var row = SourceRowState(kind: kind)
+        switch kind {
+        case .fullScreen: break
+        case .window:
+            row.window = pickedWindow.map {
+                SourceRowState.PickedWindow(appName: $0.appName, title: $0.title)
+            }
+        case .area:
+            if let display = currentDisplay, let area = savedArea(on: display) {
+                row.areaSize = area.size
+                // The display's name only when there's a choice (design.md §11.1).
+                row.areaDisplay = devices.displays().count > 1 ? display.name : nil
+            }
+        }
+        if let frame = sourceFrame { row.tooSmallForBubble = Self.bubbleSize(fitting: frame, preferred: .small) == nil }
+        return row
+    }
+
+    /// The panel's segmented control.
+    public func selectSource(_ kind: SourceKind) {
+        guard phase == .idle || phase == .ready, kind != settings.source else { return }
+        if kind == .window, !windowSourceAvailable { return }
+        sourceBeforePick = settings.source
+        settings.source = kind
+        switch kind {
+        case .fullScreen: fitBubbleToSource()
+        case .window:
+            if pickedWindow == nil { pickWindow() } else { selectedDisplayID = pickedWindow?.displayID; fitBubbleToSource() }
+        case .area:
+            if let display = currentDisplay, savedArea(on: display) != nil { fitBubbleToSource() }
+            else { showAreaOverlay(startsRecording: false) }
+        }
+    }
+
+    /// Change…: the window picker or the area overlay again.
+    public func changeSource() {
+        guard phase == .idle || phase == .ready else { return }
+        sourceBeforePick = settings.source
+        switch settings.source {
+        case .fullScreen: break
+        case .window: pickWindow()
+        case .area: showAreaOverlay(startsRecording: false)
+        }
+    }
+
+    private func pickWindow() {
+        guard let windowPicker, !isPickingWindow else { return }
+        isPickingWindow = true
+        Task {
+            let picked = await windowPicker.pickWindow()
+            isPickingWindow = false
+            if let picked {
+                pickedWindow = picked
+                selectedDisplayID = picked.displayID
+            } else if pickedWindow == nil, settings.source == .window {
+                // Canceled with no window yet: the segment goes back (design.md §11.1).
+                settings.source = sourceBeforePick == .window ? .fullScreen : sourceBeforePick
+            }
+            fitBubbleToSource()
+        }
+    }
+
+    private func showAreaOverlay(startsRecording: Bool) {
+        guard let display = devices.displayWithMouse() ?? currentDisplay else { return }
+        selectedDisplayID = display.id
+        areaOverlay = AreaOverlayRequest(display: display, rect: savedArea(on: display), startsRecording: startsRecording)
+    }
+
+    /// Use This Area (or Return): `rect` in AppKit global points on the overlay's display.
+    public func areaChosen(_ rect: CGRect) {
+        guard let request = areaOverlay else { return }
+        areaOverlay = nil
+        settings.areas[BubblePlacement.displayKey(request.display.id)] = rect.integral
+        settings.source = .area
+        selectedDisplayID = request.display.id
+        if request.startsRecording, phase == .idle || phase == .ready {
+            beginTake()
+        } else {
+            fitBubbleToSource()
+        }
+    }
+
+    /// Esc or Cancel: the previous source stays.
+    public func areaCanceled() {
+        guard let request = areaOverlay else { return }
+        areaOverlay = nil
+        if savedArea(on: request.display) == nil, settings.source == .area {
+            settings.source = sourceBeforePick == .area ? .fullScreen : sourceBeforePick
+        }
+        fitBubbleToSource()
+    }
+
+    private func savedArea(on display: DisplayInfo) -> CGRect? {
+        settings.areas[BubblePlacement.displayKey(display.id)]
+    }
+
+    /// The frame the take records (window or area), nil for full screen.
+    var sourceFrame: CGRect? {
+        switch settings.source {
+        case .fullScreen: nil
+        case .window: pickedWindow?.frame
+        case .area: currentDisplay.flatMap { savedArea(on: $0) }
+        }
+    }
+
+    /// During an area take: the four corner brackets (never recorded).
+    public var bracketsFrame: CGRect? {
+        guard phase.isInTake || phase == .starting, settings.source == .area else { return nil }
+        return recordingDisplay.flatMap { savedArea(on: $0) }
+    }
+
+    /// The window being recorded (its app's name goes in the toasts and the menu).
+    var recordedWindow: PickedWindow? { settings.source == .window ? pickedWindow : nil }
+
+    /// The biggest size not above `preferred` whose diameter fits twice in the frame's shorter side
+    /// (L → M → S); nil: even S doesn't fit, the take records without the camera (design.md §11.2).
+    public static func bubbleSize(fitting frame: CGRect, preferred: BubbleSize) -> BubbleSize? {
+        let shorter = min(frame.width, frame.height)
+        let order: [BubbleSize] = [.large, .medium, .small]
+        let candidates = order.drop { $0 != preferred }
+        return candidates.first { shorter >= 2 * $0.diameter }
+    }
+
+    private var framePlaceKey: String { settings.source.rawValue }
+
+    /// Puts the bubble inside the source's frame (or back on the display for full screen).
+    private func fitBubbleToSource() {
+        guard var b = bubble else { return }
+        if let display = currentDisplay, phase == .ready || phase == .idle { b.display = display }
+        guard let frame = sourceFrame else {
+            b.frame = nil
+            b.place = place(for: b.display)
+            if !cameraHidden { b.hidden = false }
+            bubble = b
+            return
+        }
+        var p = settings.framePlaces[framePlaceKey] ?? .default
+        if let size = Self.bubbleSize(fitting: frame, preferred: p.size) {
+            p.size = size
+            if !cameraHidden { b.hidden = false }
+        } else {
+            b.hidden = true // too small: no camera in this take
+        }
+        b.frame = frame
+        b.place = p
+        bubble = b
+    }
+
+    /// Window mode: the window moved or resized; the bubble follows it.
+    private func recordedFrameMoved(to frame: CGRect) {
+        guard settings.source == .window else { return }
+        pickedWindow?.frame = frame
+        fitBubbleToSource()
+    }
+
     // MARK: Start (panel button, Return, ⌥⇧L)
 
     /// Start Recording in the panel (or Return there).
@@ -371,7 +573,7 @@ public final class AppModel {
             switch phase {
             case .idle:
                 selectedDisplayID = devices.displayWithMouse()?.id ?? devices.displays().first?.id
-                beginTake()
+                startFromHotkey()
             case .ready: beginTake()
             case .countdown: cancelCountdown()
             case .recording, .paused, .resumeCountdown: stop()
@@ -397,12 +599,65 @@ public final class AppModel {
         }
     }
 
-    private func beginTake() {
+    /// ⌥⇧L from idle records the last source if it's still there; otherwise it opens the panel on
+    /// that segment with the picker or the overlay up. Never a silent fall back to full screen.
+    private func startFromHotkey() { beginTake(fromHotkey: true) }
+
+    /// Just before the countdown: is the source still there? The window is looked up again (it may
+    /// have moved, to another display too, or be gone); the area must still lie on a connected
+    /// display. Missing: ⌥⇧L opens the panel on that segment with the picker or the overlay up;
+    /// Start shows "That window is gone" then the picker, or the overlay (design.md §11.1).
+    /// Never a silent fall back to full screen.
+    private func sourceIsReady(fromHotkey: Bool) -> Bool {
+        switch settings.source {
+        case .fullScreen:
+            return true
+        case .window:
+            if let window = pickedWindow, let found = locate(window) {
+                pickedWindow?.frame = found.frame
+                pickedWindow?.displayID = found.displayID
+                selectedDisplayID = found.displayID
+                return true
+            }
+            let wasPicked = pickedWindow != nil
+            pickedWindow = nil
+            if phase == .idle { openPanel() }
+            sourceBeforePick = .window
+            if wasPicked, !fromHotkey {
+                Task {
+                    _ = await effects.present(Messages.windowGone)
+                    pickWindow()
+                }
+            } else {
+                pickWindow()
+            }
+            return false
+        case .area:
+            if let display = currentDisplay, let area = savedArea(on: display),
+               devices.displays().contains(where: { $0.id == display.id && $0.frame.contains(area) }) {
+                return true
+            }
+            if phase == .idle { openPanel() }
+            sourceBeforePick = .area
+            showAreaOverlay(startsRecording: fromHotkey)
+            return false
+        }
+    }
+
+    /// Where the picked window is now (frame, display); nil: gone or off screen. Without a lookup
+    /// (tests that don't care), the pick is trusted.
+    private func locate(_ window: PickedWindow) -> (frame: CGRect, displayID: CGDirectDisplayID)? {
+        guard let windowLookup else { return (window.frame, window.displayID) }
+        return windowLookup(window.id)
+    }
+
+    private func beginTake(fromHotkey: Bool = false) {
         guard permissions.status(.screen) == .granted else {
             if phase == .ready { phase = .idle; endBubble() }
             welcomeOpen = true
             return
         }
+        guard sourceIsReady(fromHotkey: fromHotkey) else { return }
         guard let display = currentDisplay else { return }
         recordingDisplay = display
         // Hide Camera in Ready carries into the take (design.md add-ons); endBubble() resets it after.
@@ -424,13 +679,33 @@ public final class AppModel {
             // Let the window layer order the bubble in first (it reacts to `bubble` on the next turn).
             await Task.yield()
             guard phase == .starting else { return }
+            let source: CaptureSource
+            var displayID = display.id
+            switch (settings.source, pickedWindow, savedArea(on: display)) {
+            case (.fullScreen, _, _): source = .display
+            case (.window, let window?, _):
+                source = .window(window.id)
+                displayID = window.displayID
+            case (.area, _, let area?):
+                source = .area(area)
+            default:
+                // Unreachable (sourceIsReady checked it before the countdown): never record the
+                // full display instead. Back to the panel on that segment, picker or overlay up.
+                AppLog.info("start: \(settings.source) source missing at start, back to the panel")
+                assertionFailure("source \(settings.source) missing at start")
+                phase = .idle
+                endBubble()
+                _ = sourceIsReady(fromHotkey: false)
+                return
+            }
             let options = RecordingOptions(
-                displayID: display.id,
+                displayID: displayID,
                 bubbleWindowID: bubble != nil ? bubbleWindowID : nil,
                 microphoneID: access(.microphone) == .granted ? resolvedMicrophoneID : nil,
                 captureComputerSound: settings.computerSound,
                 showClicks: settings.highlightClicks,
-                folder: settings.folder)
+                folder: settings.folder,
+                source: source)
             do {
                 let url = try await recorder.start(options)
                 takeURL = url
@@ -453,6 +728,9 @@ public final class AppModel {
             _ = await effects.present(AppAlert(title: "That display is gone",
                                                message: "Bubble could not find the display to record. Try again.",
                                                buttons: ["OK"]))
+        case .windowNotFound:
+            pickedWindow = nil
+            _ = await effects.present(Messages.windowGone)
         case .alreadyRecording:
             break
         case .captureFailed(let why):
@@ -589,7 +867,9 @@ public final class AppModel {
             // at the user, and say why.
             needsAttention = true
             effects.afterStop(result.url, open: false)
-            if let alert = Messages.stoppedOnItsOwn(result) {
+            if result.reason == .windowClosed {
+                effects.showToast(Messages.windowClosed)
+            } else if let alert = Messages.stoppedOnItsOwn(result) {
                 Task { _ = await effects.present(alert) }
             }
         }
@@ -648,6 +928,14 @@ public final class AppModel {
             countdownTask?.cancel(); countdownTask = nil
             endBubble()
             finished(result)
+        case .recordedAreaChanged(let frame):
+            recordedFrameMoved(to: frame)
+        case .recordedWindowHidden(let reason):
+            // The engine paused already (like a screen lock): follow it, never auto-resume.
+            if phase == .recording { phase = .paused; bubble?.dimmed = true; refreshElapsed() }
+            effects.showToast(Messages.windowHidden(reason, appName: recordedWindow?.appName))
+        case .recordedWindowShown:
+            if phase == .paused { effects.showToast(Messages.windowBack) }
         }
     }
 
@@ -655,17 +943,33 @@ public final class AppModel {
 
     public func setBubbleSize(_ size: BubbleSize) {
         guard var b = bubble else { return }
+        if let frame = b.frame {
+            // Inside a window or an area the size steps down to fit (design.md §11.2).
+            guard let fitting = Self.bubbleSize(fitting: frame, preferred: size) else { return }
+            b.place = BubblePlacement.resized(b.place, to: fitting)
+            bubble = b
+            var saved = b.place; saved.size = size
+            settings.framePlaces[framePlaceKey] = saved
+            return
+        }
         b.place = BubblePlacement.resized(b.place, to: size)
         bubble = b
         remember(b.place, for: b.display)
     }
 
-    /// The user dropped the bubble at `frame`; `area` is the recorded display's usable area.
+    /// The user dropped the bubble at `frame`; `area` is where it lives: the recorded display's
+    /// usable area, or the window/area frame (it snaps to the frame's corners and stays inside).
     public func bubbleDropped(frame: CGRect, area: CGRect) {
         guard var b = bubble else { return }
         b.place = BubblePlacement.place(afterDropping: frame, size: b.place.size, in: area)
         bubble = b
-        remember(b.place, for: b.display)
+        if b.frame != nil {
+            var saved = b.place
+            saved.size = settings.framePlaces[framePlaceKey]?.size ?? saved.size
+            settings.framePlaces[framePlaceKey] = saved
+        } else {
+            remember(b.place, for: b.display)
+        }
     }
 
     /// Hide Camera / Show Camera (menu) and ⦸ (hover controls).
@@ -714,6 +1018,8 @@ public final class AppModel {
             bubble?.place = place(for: display)
             bubble?.mirrored = settings.mirrorCamera
         }
+        // A window or an area: the bubble already sits where it will be recorded (design.md §11.2).
+        if sourceFrame != nil { fitBubbleToSource() }
     }
 
     private func restartBubble() {
@@ -926,11 +1232,29 @@ public enum Messages {
                         buttons: ["OK"], style: .warning)
     }
 
+    // Window and area takes (design.md §11.4).
+    public static let windowGone = AppAlert(title: "That window is gone",
+                                            message: "Bubble could not find the window to record. Pick it again.",
+                                            buttons: ["OK"])
+    public static func windowHidden(_ reason: WindowHiddenReason, appName: String?) -> Toast {
+        switch reason {
+        case .appHidden:
+            Toast(.info, "Paused: \(appName ?? "the app") is hidden. Show it, then Resume (⌥⇧P).")
+        case .notOnScreen:
+            Toast(.info, "Paused: the window isn't on screen. Bring it back, then Resume (⌥⇧P).")
+        case .otherDisplay:
+            Toast(.info, "Paused: the window moved to another display. Move it back, then Resume (⌥⇧P).")
+        }
+    }
+    public static let windowBack = Toast(.info, "The window is back. Resume with ⌥⇧P.")
+    public static let windowClosed = Toast(.info, "The window was closed, so the recording stopped and was saved.")
+
     public static func stoppedOnItsOwn(_ result: RecordingResult) -> AppAlert? {
         let file = result.url.lastPathComponent
         let saved = "It was saved as “\(file)” and is on the clipboard."
         switch result.reason {
         case .user, .discarded, .appQuitting: return nil
+        case .windowClosed: return nil // a toast (design.md §11.4): windowClosed
         case .displayDisconnected:
             return AppAlert(title: "Display disconnected, recording saved", message: saved, buttons: ["OK"], style: .informational)
         case .diskAlmostFull:

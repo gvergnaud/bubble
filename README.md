@@ -29,6 +29,8 @@ editing the transcript. Free, no account, and everything stays on your Mac.
 
 - 🎥 **Screen + camera bubble.** Your whole display, your mic, your face in a round bubble. Drag it
   to any corner, pick S, M or L, hide it mid-take.
+- 🪟 **Full screen, one window, or an area.** Record a single app window (it follows the window as you
+  move it) or a part of the screen you draw.
 - 🔊 **Computer sound too**, mixed with your voice, if you want it.
 - ⏸️ **Pause, resume, discard.** Take a break, or throw a take away with one shortcut.
 - ♾️ **No limits.** No time limit, no watermark, no account, no upload.
@@ -43,6 +45,10 @@ editing the transcript. Free, no account, and everything stays on your Mac.
 - 📂 **Edit any video, not only your recordings.** Any MP4, MOV or M4V from any folder or drive. It's
   edited where it is: never copied, never changed. Moved or renamed later, Bubble finds it again;
   the editor's home lists your recent videos.
+
+**Known limits.** Recording one window: switching it to full screen and back pauses the take (press
+Resume), and closing a window that its app keeps open in the background pauses the take instead of
+stopping it (press Stop).
 
 [![The Bubble editor on the Pulse walkthrough: it transcribes on its own, a stumble cut, a slow sentence at 1.5×, then Download](media/editor.webp)](media/editor.mp4)
 

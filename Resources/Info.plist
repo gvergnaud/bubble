@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Owner: QA track. Content per docs/architecture.md §4. scripts/build-app.sh copies it into Bubble.app. -->
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Bubble</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
-		<!-- Finder's Open With > Bubble, drops on the Dock icon, the Dock's recent list
-		     (docs/editor-open-video.md §2 D). Alternate: Bubble never becomes the default video app. -->
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Video</string>
@@ -24,8 +23,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleDisplayName</key>
-	<string>Bubble</string>
 	<key>CFBundleExecutable</key>
 	<string>Bubble</string>
 	<key>CFBundleIconFile</key>
@@ -39,9 +36,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.3</string>
+	<string>0.1.4</string>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>5</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
@@ -50,10 +47,10 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Bubble shows your camera in the round bubble of your recordings.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Bubble records your voice with your screen.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Bubble records your voice with your screen.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>

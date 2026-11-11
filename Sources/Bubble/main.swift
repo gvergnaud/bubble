@@ -18,7 +18,11 @@ func makeDelegate() -> AppDelegate {
         let model = AppModel(recorder: LiveRecorder(), camera: LiveCameraFeed(),
                              // LiveDeviceCatalog lists the system default input first ("automatic" mic).
                              devices: LiveDeviceCatalog(), permissions: LivePermissions(),
-                             settings: Settings(), effects: effects)
+                             settings: Settings(), effects: effects,
+                             // Apple's content-sharing picker (design.md §11.1); unavailable before macOS 15.2.
+                             windowPicker: LiveWindowPicker(),
+                             // The picked window, looked up again just before each take.
+                             windowLookup: { RecordedWindow.current($0) })
         return AppDelegate(model: model, effects: effects)
     }
 
@@ -39,7 +43,8 @@ func makeDelegate() -> AppDelegate {
     let effects = SystemEffects(dryRun: true)
     wireEditor(effects, fake: true)
     let model = AppModel(recorder: TickingFakeRecorder(), camera: FakeCameraFeed(), devices: catalog,
-                         permissions: permissions, settings: Settings(defaults: defaults), effects: effects)
+                         permissions: permissions, settings: Settings(defaults: defaults), effects: effects,
+                         windowPicker: FakeWindowPicker())
     return AppDelegate(model: model, effects: effects, placeholder: SyntheticFrames.placeholderFace(size: 520))
 }
 

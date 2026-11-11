@@ -60,7 +60,7 @@ final class BubbleWindowController {
             panel.orderOut(nil)
             return
         }
-        let area = usableArea(for: state.display)
+        let area = state.frame ?? usableArea(for: state.display)
         let circle = BubblePlacement.frame(for: state.place, in: area)
         let frame = circle.insetBy(dx: -BubbleView.shadowPadding, dy: -BubbleView.shadowPadding)
 
@@ -111,7 +111,7 @@ final class BubbleWindowController {
         dragStartFrame = nil
         guard let state = model.bubble else { return }
         let circle = panel.frame.insetBy(dx: BubbleView.shadowPadding, dy: BubbleView.shadowPadding)
-        model.bubbleDropped(frame: circle, area: usableArea(for: state.display))
+        model.bubbleDropped(frame: circle, area: state.frame ?? usableArea(for: state.display))
         // The model may land on the same place (a tiny drag): put the window back where it belongs.
         apply(model.bubble)
     }

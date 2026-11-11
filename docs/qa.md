@@ -311,6 +311,32 @@ video of your own outside `~/Movies/Bubble` (a phone clip on the Desktop is idea
   browser can't play this video's format", Download still works.
   Fake files for all §4 cases: `web/fixtures/open-video/` (2 s each).
 
+## 10. Record a window or an area (design.md §11)
+
+The gate checks the model, the crop math and the files on synthetic frames; these need the real
+window picker and a real take.
+
+- [ ] **10.1 A window.** Panel → **Window** → Apple's picker opens; pick a Safari window. → The row
+  reads "Safari — <title>" with **Change…**; the bubble preview sits inside the window, bottom-left.
+  Start, talk 20 s, Stop. → The file is the window only (no menu bar, no other app), sharp,
+  its size the window's in pixels (even numbers, at most 3840 wide). Menu bar menu: "Recording Safari".
+- [ ] **10.2 Move, resize, cover.** During a window take: drag the window, resize it, put another
+  app's window over it. → The bubble follows the window; the video keeps showing the window
+  (letterboxed after a resize), never the window on top.
+- [ ] **10.3 Hide, minimize, other display.** ⌘H the app → paused, toast "Paused: Safari is
+  hidden…". Show it → "The window is back. Resume with ⌥⇧P."; it stays paused until ⌥⇧P.
+  Same with minimize (⌘M) and with dragging the window to another display.
+- [ ] **10.4 Close it.** Close the window mid-take → the take stops and saves with the toast "The
+  window was closed…" (no alert); the file plays to the end.
+- [ ] **10.5 An area.** Panel → **Area** → the overlay dims the display; draw 1280 × 720 (⌘ snaps
+  to 16:9), Use This Area. Record 20 s. → Four corner brackets during the take, not in the video;
+  the file is exactly that area at native pixels. Under 320 × 240 the button is off ("At least 320 × 240").
+- [ ] **10.6 ⌥⇧L remembers.** After 10.1, ⌥⇧L records that window at once; with the window
+  closed, it opens the panel on Window with the picker up (never full screen by surprise).
+  After 10.5, ⌥⇧L records the saved area on the display with the mouse.
+- [ ] **10.7 Too small.** A window 400 × 300 pt → the bubble steps down to S; a 300 × 250 one →
+  "This window is too small for your bubble: recording without the camera."
+
 ---
 
 When something fails: note the check number, what you saw, and attach the file or a screenshot.

@@ -84,8 +84,23 @@ public protocol CameraFeed: AnyObject {
 
 // MARK: - Recording
 
+/// What the take records (docs/architecture.md §3.2). The bubble is in the video only where it
+/// overlaps the recorded window or area: the app keeps it inside.
+public enum CaptureSource: Sendable, Equatable {
+    /// The whole display `RecordingOptions.displayID`.
+    case display
+    /// One window (from WindowPicking), with its own app's menus, sheets and popovers, cropped to
+    /// the window's frame and followed when it moves or resizes; other apps' windows never cover
+    /// it. `RecordingOptions.displayID` = the display it is on at start (PickedWindow.displayID).
+    case window(CGWindowID)
+    /// A fixed rectangle in AppKit global points (origin bottom-left of the main display), on
+    /// `RecordingOptions.displayID`; the recorder clips it to that display.
+    case area(CGRect)
+}
+
 public struct RecordingOptions: Sendable, Equatable {
     public var displayID: CGDirectDisplayID
+    public var source: CaptureSource
     /// The bubble's window number (NSWindow.windowNumber). It is the only window of ours left in
     /// the video; every other window of the app (panel, countdown, hover controls, alerts) is
     /// excluded, including windows created during the take. nil = no camera at all.
@@ -101,8 +116,9 @@ public struct RecordingOptions: Sendable, Equatable {
     public var folder: URL
 
     public init(displayID: CGDirectDisplayID, bubbleWindowID: CGWindowID?, microphoneID: String?,
-                captureComputerSound: Bool, showClicks: Bool, folder: URL) {
-        self.displayID = displayID; self.bubbleWindowID = bubbleWindowID; self.microphoneID = microphoneID
+                captureComputerSound: Bool, showClicks: Bool, folder: URL, source: CaptureSource = .display) {
+        self.displayID = displayID; self.source = source
+        self.bubbleWindowID = bubbleWindowID; self.microphoneID = microphoneID
         self.captureComputerSound = captureComputerSound; self.showClicks = showClicks; self.folder = folder
     }
 }
@@ -122,6 +138,8 @@ public enum StopReason: Sendable, Equatable {
     case diskAlmostFull
     case screenPermissionRevoked
     case appQuitting
+    /// The recorded window was closed (or its app quit). The file is kept.
+    case windowClosed
     case failed(String)
 }
 
@@ -146,14 +164,57 @@ public enum RecorderEvent: Sendable, Equatable {
     /// The recording ended without stop()/discard() being called (display unplugged, disk full,
     /// permission revoked, writer failure). The file is kept and playable.
     case stoppedOnItsOwn(RecordingResult)
+    /// Window mode: the recorded window moved or resized; its frame now, AppKit global points.
+    /// The video keeps its size (a resized window is letterboxed). Keep the bubble inside it.
+    case recordedAreaChanged(CGRect)
+    /// Window mode: the window can't be recorded now (design.md §11.4). The take is paused already
+    /// (like a screen lock: no auto-resume, the app calls resume()).
+    case recordedWindowHidden(WindowHiddenReason)
+    /// Window mode: the window is visible again (the take stays paused until resume()).
+    case recordedWindowShown
 }
 
 public enum RecorderError: Error, Sendable, Equatable {
     case screenPermissionMissing
     case displayNotFound
+    /// Window mode: the window is gone, or not on screen, at start.
+    case windowNotFound
     case notEnoughDiskSpace(bytesFree: Int64)
     case alreadyRecording
     case captureFailed(String)
+}
+
+/// Why a recorded window can't be recorded now.
+public enum WindowHiddenReason: Sendable, Equatable {
+    /// Its app is hidden (⌘H).
+    case appHidden
+    /// Minimized, or on another Space: macOS doesn't tell the two apart without Accessibility.
+    case notOnScreen
+    /// Moved to another display than the one recorded.
+    case otherDisplay
+}
+
+/// A window the user chose to record.
+public struct PickedWindow: Sendable, Equatable {
+    public var id: CGWindowID
+    public var title: String
+    public var appName: String
+    /// AppKit global points at pick time.
+    public var frame: CGRect
+    public var displayID: CGDirectDisplayID
+    public init(id: CGWindowID, title: String, appName: String, frame: CGRect, displayID: CGDirectDisplayID) {
+        self.id = id; self.title = title; self.appName = appName; self.frame = frame; self.displayID = displayID
+    }
+}
+
+/// Lets the user choose a window to record (LiveWindowPicker: the system's content-sharing picker;
+/// FakeWindowPicker in BubbleTesting). Bubble's own windows are never offered.
+@MainActor
+public protocol WindowPicking: AnyObject {
+    /// false: window mode is not offered (macOS before 15.2).
+    var isAvailable: Bool { get }
+    /// nil: canceled. One pick at a time: a second call while one is up returns nil.
+    func pickWindow() async -> PickedWindow?
 }
 
 /// The seam between the app and the capture engine. The app talks only to this; QA and the UI

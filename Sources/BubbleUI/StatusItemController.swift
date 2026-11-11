@@ -218,6 +218,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self?.model.perform(.settings)
         }
         a.quit = { [weak self] in self?.onQuit?() }
+        a.source.select = { [weak self] in self?.model.selectSource($0) }
+        a.source.change = { [weak self] in self?.model.changeSource() }
         return RecorderPanelView(state: model.panel, actions: a)
     }
 

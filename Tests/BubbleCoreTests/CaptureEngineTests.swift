@@ -210,3 +210,109 @@ private final class CaptureErrorBox: @unchecked Sendable { var error: Error? }
     }
 }
 
+
+@Suite struct CaptureGeometryTests {
+    // Main display 1512x982 pt at the origin; a second display 1920x1080 to its right, top-aligned.
+    let main = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    let right = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+
+    @Test func appKitAndCGAreTheSameFlipBothWays() {
+        let ak = CGRect(x: 100, y: 50, width: 400, height: 300) // 50 pt above the bottom
+        let cg = CaptureGeometry.cgGlobal(fromAppKit: ak, mainDisplayHeight: 982)
+        #expect(cg == CGRect(x: 100, y: 632, width: 400, height: 300))
+        #expect(CaptureGeometry.appKitGlobal(fromCG: cg, mainDisplayHeight: 982) == ak)
+    }
+
+    @Test func cropIsDisplayLocalAndClamped() {
+        // a window on the second display, partly off its bottom edge
+        let w = CGRect(x: 1612, y: 900, width: 600, height: 400)
+        #expect(CaptureGeometry.crop(w, onDisplay: right) == CGRect(x: 100, y: 900, width: 600, height: 180))
+        #expect(CaptureGeometry.crop(w, onDisplay: main) == nil) // not on the main display
+    }
+
+    @Test func tinyOrFractionalCrops() {
+        #expect(CaptureGeometry.crop(CGRect(x: 10, y: 10, width: 40, height: 400), onDisplay: main) == nil)
+        #expect(CaptureGeometry.crop(CGRect(x: 10.4, y: 10.6, width: 300.2, height: 200), onDisplay: main)
+                == CGRect(x: 10, y: 10, width: 301, height: 201))
+    }
+
+    @Test func outputSizeIsNativeEvenAndCapped() {
+        let v = CaptureGeometry.videoSettings(cropSize: CGSize(width: 801, height: 601), scale: 2)
+        #expect(v.width == 1602 && v.height == 1202)
+        let big = CaptureGeometry.videoSettings(cropSize: CGSize(width: 2560, height: 1440), scale: 2)
+        #expect(big.width == 3840 && big.height == 2160)
+        #expect(v.width % 2 == 0 && v.height % 2 == 0)
+    }
+
+    @Test func followingAWindow() {
+        let start = CGRect(x: 100, y: 100, width: 800, height: 600)
+        let crop0 = CaptureGeometry.crop(start, onDisplay: main)!
+        typealias S = CaptureGeometry.WindowSample
+        // same place
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: false, sample: S(bounds: start, isOnScreen: true), displayBounds: main) == .unchanged)
+        // moved
+        let moved = start.offsetBy(dx: 50, dy: 20)
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: false, sample: S(bounds: moved, isOnScreen: true), displayBounds: main)
+                == .moved(crop: CGRect(x: 150, y: 120, width: 800, height: 600)))
+        // minimized
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: false, sample: S(bounds: start, isOnScreen: false), displayBounds: main) == .hidden(.notOnScreen))
+        // still hidden: no repeat
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: true, sample: S(bounds: start, isOnScreen: false), displayBounds: main) == .unchanged)
+        // mostly dragged onto the other display
+        let across = CGRect(x: 1300, y: 100, width: 800, height: 600)
+        let right = CGRect(x: main.maxX, y: 0, width: 1920, height: 1080)
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: false, sample: S(bounds: across, isOnScreen: true), displayBounds: main,
+                                       otherDisplays: [right]) == .hidden(.otherDisplay))
+        // the minimize animation: shrinking into the Dock, mostly below every display: wait
+        let genie = CGRect(x: main.midX, y: main.maxY - 30, width: 60, height: 120)
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: false, sample: S(bounds: genie, isOnScreen: true), displayBounds: main,
+                                       otherDisplays: [right]) == .unchanged)
+        // its app hidden (⌘H)
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: false, sample: S(bounds: start, isOnScreen: false, appHidden: true), displayBounds: main) == .hidden(.appHidden))
+        // back
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: true, sample: S(bounds: start, isOnScreen: true), displayBounds: main)
+                == .visibleAgain(crop: crop0))
+        // closed
+        #expect(CaptureGeometry.follow(lastCrop: crop0, wasHidden: false, sample: nil, displayBounds: main) == .gone)
+    }
+}
+
+@Suite struct CaptureStreamUpdateTests {
+    /// Records what a slow apply was asked to do.
+    actor Calls {
+        var seen: [Int] = []
+        func add(_ value: Int) { seen.append(value) }
+    }
+
+    @Test func aBurstEndsOnTheLastValueWithoutOverlap() async {
+        let calls = Calls()
+        let path = LatestOnly(initial: 0) { _, wanted in
+            await calls.add(wanted)
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        // Changes say "at least n" (like crops ordered by sequence), so the order in which
+        // concurrent callers reach the actor does not matter; only the coalescing does.
+        let first = Task { await path.update { $0 = max($0, 1) } }
+        while await calls.seen.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }   // 1 in flight
+        async let second = path.update { $0 = max($0, 2) }
+        async let third = path.update { $0 = max($0, 3) }
+        let results = await [first.value, second, third]
+        #expect(results.allSatisfy { $0 == nil })
+        #expect(await calls.seen == [1, 3])
+        #expect(await path.inEffect == 3)
+    }
+
+    @Test func aFailureIsReturnedAndRetriedByTheNextUpdate() async {
+        struct Boom: Error {}
+        let calls = Calls()
+        let path = LatestOnly(initial: 0) { _, wanted in
+            await calls.add(wanted)
+            if wanted == 1 { throw Boom() }
+        }
+        #expect(await path.update { $0 = 1 } is Boom)
+        #expect(await path.inEffect == 0)
+        #expect(await path.update { $0 = 2 } == nil)
+        #expect(await path.inEffect == 2)
+        #expect(await calls.seen == [1, 2])
+    }
+}

@@ -113,6 +113,44 @@ public final class FakeCameraFeed: CameraFeed {
     public func simulateLive(_ live: Bool) { onLiveChange?(live) }
 }
 
+// MARK: - Window picker
+
+/// A WindowPicking that shows nothing: each pickWindow() answers `nextPick` (nil = the user
+/// canceled), or waits for `answer(_:)` when `holds` is true. One pick at a time, like the system's.
+@MainActor
+public final class FakeWindowPicker: WindowPicking {
+    public var isAvailable: Bool
+    /// What the next pick answers (nil: canceled).
+    public var nextPick: PickedWindow?
+    /// true: pickWindow() waits for answer(_:) (a picker left up).
+    public var holds = false
+    public private(set) var pickCount = 0
+    public private(set) var isPicking = false
+    private var waiting: CheckedContinuation<PickedWindow?, Never>?
+
+    public init(isAvailable: Bool = true, nextPick: PickedWindow? = FakeWindowPicker.sampleWindow) {
+        self.isAvailable = isAvailable; self.nextPick = nextPick
+    }
+
+    public func pickWindow() async -> PickedWindow? {
+        guard isAvailable, !isPicking else { return nil }
+        pickCount += 1
+        guard holds else { return nextPick }
+        isPicking = true
+        defer { isPicking = false }
+        return await withCheckedContinuation { waiting = $0 }
+    }
+
+    /// Test helper: answers a held pick (nil: canceled).
+    public func answer(_ window: PickedWindow?) {
+        waiting?.resume(returning: window); waiting = nil
+    }
+
+    /// A Safari window, 1280×800 points at (200, 150) on display 1.
+    public static let sampleWindow = PickedWindow(id: 4242, title: "Bubble — a free Loom for macOS", appName: "Safari",
+                                                  frame: CGRect(x: 200, y: 150, width: 1280, height: 800), displayID: 1)
+}
+
 public struct FakeError: Error, Equatable, CustomStringConvertible {
     public var description: String
     public init(_ description: String) { self.description = description }

@@ -15,6 +15,7 @@ public struct RecorderPanelActions {
     public var openFolder: @MainActor @Sendable () -> Void = {}
     public var openSettings: @MainActor @Sendable () -> Void = {}
     public var quit: @MainActor @Sendable () -> Void = {}
+    public var source = SourceActions()
     public init() {}
 }
 
@@ -30,6 +31,8 @@ public struct RecorderPanelView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            SourceSection(state: state.source, windowAvailable: state.windowSourceAvailable, actions: actions.source)
+                .padding(.bottom, 12)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
                     rowLabel("Camera", systemImage: "video")

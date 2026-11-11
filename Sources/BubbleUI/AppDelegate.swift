@@ -14,6 +14,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     private var statusItem: StatusItemController?
     private var bubble: BubbleWindowController?
     private var countdown: CountdownWindowController?
+    private var areaOverlay: AreaOverlayWindowController?
+    private var brackets: BracketsWindowController?
     private var welcome: WelcomeWindowController?
     private let hotkeys = Hotkeys()
     private let log = Logger(subsystem: "local.bubble.Bubble", category: "App")
@@ -46,6 +48,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         statusItem?.onQuit = { NSApp.terminate(nil) }
         bubble = BubbleWindowController(model: model, content: bubbleContent)
         countdown = CountdownWindowController(model: model)
+        areaOverlay = AreaOverlayWindowController(model: model)
+        brackets = BracketsWindowController(model: model)
         trackChanges { [weak self] in
             guard let self else { return }
             self.hotkeys.setCountdownKeys(self.model.countdownKeysActive)

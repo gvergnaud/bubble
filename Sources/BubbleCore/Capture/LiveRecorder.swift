@@ -127,6 +127,9 @@ public final class LiveRecorder: Recorder {
         capture.onStreamError = { [weak self] error in
             Task { @MainActor in await self?.streamStopped(error) }
         }
+        capture.onWindowEvent = { [weak self] event in
+            Task { @MainActor in await self?.windowEvent(event) }
+        }
         take = Take(options: options, plan: plan, capture: capture, session: session, url: url, microphoneID: options.microphoneID)
         currentURL = url
         mirror = Timeline()
@@ -246,6 +249,24 @@ public final class LiveRecorder: Recorder {
         await endOnItsOwn(reason)
     }
 
+    /// Window mode: the recorded window moved, hid, came back or closed (design.md §11.4).
+    private func windowEvent(_ event: ScreenCapture.WindowEvent) async {
+        guard take != nil, state == .recording || state == .paused else { return }
+        switch event {
+        case .moved(let frame):
+            onEvent?(.recordedAreaChanged(frame))
+        case .hidden(let reason):
+            // Like a screen lock: pause, no auto-resume.
+            pause()
+            onEvent?(.recordedWindowHidden(reason))
+        case .shown(let frame):
+            onEvent?(.recordedAreaChanged(frame))
+            onEvent?(.recordedWindowShown)
+        case .gone:
+            await endOnItsOwn(.windowClosed)
+        }
+    }
+
     /// The user declined or stopped the capture (macOS's own "Stop sharing", or the grant was removed).
     private static func isUserStop(_ error: Error) -> Bool {
         let error = error as NSError
@@ -261,7 +282,10 @@ public final class LiveRecorder: Recorder {
         events.onLockOrSleep = { [weak self] in self?.pause() }
         events.onPowerOff = { [weak self] in Task { await self?.endOnItsOwn(.appQuitting) } }
         events.onDisplaysChanged = { [weak self] in
-            guard let self, let take = self.take, !SystemEvents.isDisplayOnline(take.options.displayID) else { return }
+            // Window mode: a window on an unplugged display moves to another one; the follower
+            // pauses the take (.otherDisplay) instead of ending it.
+            guard let self, let take = self.take, take.plan.window == nil,
+                  !SystemEvents.isDisplayOnline(take.options.displayID) else { return }
             Task { await self.endOnItsOwn(.displayDisconnected) }
         }
         events.onMicrophoneGone = { [weak self] id in
@@ -301,7 +325,7 @@ public final class LiveRecorder: Recorder {
         guard var current = take else { return }
         let next = AVCaptureDevice.default(for: .audio)
         do {
-            try await current.capture.updateMicrophone(next?.uniqueID, plan: current.plan)
+            try await current.capture.updateMicrophone(next?.uniqueID)
         } catch {
             log.error("mic switch: \(error.localizedDescription, privacy: .public)")
             current.microphoneID = nil

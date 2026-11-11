@@ -162,6 +162,38 @@ design.md's "v1 scope" note is the source of truth. Mapped to engineering:
 | Disk | `URLResourceValues.volumeAvailableCapacityForImportantUsage` every 5 s | `DiskPolicy`: warn < 2 GB, stop < 300 MB |
 | Logout / shutdown | `NSWorkspace.willPowerOffNotification` | stop and save (`.appQuitting`) |
 
+### 3.4 Recording one window or an area (`RecordingOptions.source`)
+
+Contract: `CaptureSource` (`.display`, `.window(CGWindowID)`, `.area(CGRect)`), `PickedWindow`,
+`WindowPicking` in `Contracts.swift`. The writer, frame grid, audio and bubble rules above do not
+change: only the filter, the crop and the output size do.
+
+- **Window filter**: `SCContentFilter(display:, including: [target app, Bubble], exceptingWindows:
+  Bubble's windows but the bubble)`, refreshed like the display filter (Bubble windows made during
+  the take stay out). The target app's menus, sheets, popovers and tooltips are their own windows:
+  including the whole app keeps them in the video. Other apps never render, so nothing covers the
+  window. `config.sourceRect` = the window's frame on its display (display-local points).
+- **Area filter**: today's display filter + `sourceRect` = the area clipped to `displayID`.
+- **Output size**: the crop at start × `pointPixelScale`, longest side ≤ 3840, even. Fixed for the
+  take: a resized window is letterboxed (`preservesAspectRatio`).
+- **Tracking** (window only): `CGWindowListCopyWindowInfo(.optionIncludingWindow)` polled on the
+  engine's queue (never the main actor), 10 Hz while the frame changed in the last second, else
+  4 Hz. Moved or resized → `updateConfiguration(sourceRect)` + `.recordedAreaChanged(frame)`; the app
+  moves the bubble with the window and keeps it inside (the bubble is recorded only inside the crop).
+  Can't be recorded now → `pause()` + `.recordedWindowHidden(reason)` (no auto-resume, like a
+  lock; design.md §11.4), `.recordedWindowShown` when it is back: `.appHidden`
+  (`NSRunningApplication.isHidden`), `.otherDisplay` (most of it on another display than
+  `displayID`; the crop never switches display), `.notOnScreen` (minimized or another Space: not
+  told apart without Accessibility). A window across two displays: crop to the part on `displayID`.
+  Window or its app gone → finish, `.stoppedOnItsOwn(.windowClosed)`.
+- **Picking**: `SCContentSharingPicker` (single window, Bubble excluded), window id from
+  `filter.includedWindows` (macOS 15.2+; below, `WindowPicking.isAvailable` is false and the window
+  mode is not offered). The area is drawn by the app (app-ui), in AppKit global points.
+- **Geometry** in a pure `CaptureGeometry` (AppKit ↔ CG global flip on any display layout, clip to a
+  display, display-local crop, scale, 3840 cap, even sizes, letterbox rect), unit-tested. Real
+  window capture is checked in the batched real-capture run (§8.3), including a menu opened over
+  the window and a full-screen window.
+
 ---
 
 ## 4. Permissions, signing, running an unsigned local build

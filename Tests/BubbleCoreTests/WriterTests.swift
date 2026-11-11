@@ -40,11 +40,13 @@ struct SyntheticTake {
     var staticSpans: [ClosedRange<Double>] = []
     /// Host-time pauses: (pause at, resume at), in seconds of the synthetic host clock.
     var pauses: [(Double, Double)] = []
+    /// The encoder settings (window/area mode: CaptureGeometry.videoSettings); nil = width × height at 1×.
+    var settings: VideoSettings? = nil
 
     /// Returns the writer's file time at stop.
     @discardableResult
     func write(to url: URL, errors: ErrorBox) async throws -> CMTime {
-        let video = VideoSettings.forDisplay(pointSize: CGSize(width: width, height: height), scale: 1)
+        let video = settings ?? VideoSettings.forDisplay(pointSize: CGSize(width: width, height: height), scale: 1)
         let writer = try RecordingWriter(url: url, video: video, audio: audio ? AudioSettings() : nil, realTime: false)
         let pump = FramePump(fps: 30) { pb, time in
             do { try writer.appendVideo(pb, at: time); errors.count() } catch { errors.add(error) }
